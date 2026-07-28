@@ -1,0 +1,12 @@
+{
+  "name": "festifind",
+  "version": "1.0.0",
+  "description": "Build a Spotify playlist from a Dutch festival lineup, matched to your taste.",
+  "type": "module",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "license": "MIT"
+}

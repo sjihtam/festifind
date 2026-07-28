@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "WebFetch(domain:lowlands.nl)",
+      "WebFetch(domain:dekmantelfestival.com)",
+      "WebFetch(domain:decibel.nl)",
+      "WebFetch(domain:mysteryland.com)",
+      "WebFetch(domain:www.mysteryland.nl)",
+      "WebSearch",
+      "WebFetch(domain:frankvaneykelen.github.io)",
+      "WebFetch(domain:www.decibeloutdoor.com)",
+      "WebFetch(domain:djmag.com)",
+      "WebFetch(domain:ra.co)",
+      "WebFetch(domain:solarweekend.com)",
+      "WebFetch(domain:www.outhere.guide)",
+      "WebFetch(domain:edmdancedirectory.com)",
+      "WebFetch(domain:electronicgroove.com)",
+      "WebFetch(domain:developer.spotify.com)",
+      "Bash(node setup.mjs 48b77de33ed0457db2fc0c81646f61c7 Sam)",
+      "Bash(ln -sfn . /Users/sjihtam/Documents/festivier/festivier)",
+      "Bash(curl -s -o /dev/null -w \"index:%{http_code} \" \"http://127.0.0.1:8888/festivier/\")",
+      "Bash(curl -s -o /dev/null -w \"app.js:%{http_code} \" \"http://127.0.0.1:8888/festivier/src/app.js\")",
+      "Bash(curl -s -o /dev/null -w \"data:%{http_code}\\\\n\" \"http://127.0.0.1:8888/festivier/data/festivals.json\")",
+      "Bash(node --input-type=module --check)",
+      "Bash(grep -v '^\\\\.$\\\\|^\\\\.\\\\.$\\\\|DS_Store\\\\|.claude')",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('.claude/settings.local.json'\\)\\)\")",
+      "Bash(node server.mjs)",
+      "Bash(curl -s -o /dev/null -w \"root:%{http_code} \" http://127.0.0.1:8888/)",
+      "Bash(curl -s -o /dev/null -w \"logo:%{http_code} \" http://127.0.0.1:8888/src/logo.svg)",
+      "Bash(curl -s -o /dev/null -w \"css:%{http_code}\\\\n\" http://127.0.0.1:8888/src/styles.css)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git -c user.name=sjihtam -c user.email=btmdm8bjyg@privaterelay.appleid.com commit -q -m ' *)"
+    ]
+  }
+}

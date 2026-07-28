@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+
+# Nothing secret lives in this repo. src/config.js holds only a Spotify Client
+# ID, which is public by design under PKCE — it is meant to be committed, so the
+# hosted copy works for the people you invite.

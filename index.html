@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Festifind — festival lineups, matched to your taste</title>
+<link rel="stylesheet" href="./src/styles.css" />
+<link rel="icon" type="image/svg+xml" href="./src/logo.svg" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0b0b0f" media="(prefers-color-scheme: dark)" />
+</head>
+<body>
+
+<header class="appbar" id="appbar">
+  <div class="appbar-inner">
+    <a class="brand" href="./">
+      <img class="brand-logo" src="./src/logo.svg" alt="" width="30" height="30" />
+      <span class="brand-name">Festifind</span>
+    </a>
+    <div class="session" id="session"></div>
+  </div>
+</header>
+
+<!-- ── Landing: everything before sign-in ─────────────────────────────── -->
+<section class="hero" id="hero" hidden>
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <h1 class="hero-title">The lineup, <em>filtered through your taste.</em></h1>
+      <p class="hero-sub">
+        Pick a festival. Festifind reads what you actually listen to, works out which
+        acts on the bill you'd love, and builds the playlist — including artists
+        you've never played.
+      </p>
+      <div class="hero-cta" id="hero-cta"></div>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <div class="hero-bars">
+        <i style="--h:34%;--d:0ms"></i>
+        <i style="--h:72%;--d:120ms"></i>
+        <i style="--h:48%;--d:240ms"></i>
+        <i style="--h:92%;--d:80ms"></i>
+        <i style="--h:60%;--d:320ms"></i>
+        <i style="--h:38%;--d:200ms"></i>
+        <i style="--h:78%;--d:400ms"></i>
+        <i style="--h:52%;--d:160ms"></i>
+        <i style="--h:30%;--d:280ms"></i>
+      </div>
+      <div class="hero-grid" id="hero-grid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── The app proper: after sign-in ──────────────────────────────────── -->
+<main id="app" hidden>
+
+  <section class="section" id="section-festival">
+    <div class="section-head">
+      <div>
+        <h2>Choose a festival</h2>
+        <p class="section-sub" id="festival-sub"></p>
+      </div>
+      <div class="seg" id="when-filter" role="group" aria-label="Filter by date">
+        <button class="seg-btn active" data-when="upcoming" type="button">Upcoming</button>
+        <button class="seg-btn" data-when="all" type="button">All of 2026</button>
+      </div>
+    </div>
+    <div class="festival-grid" id="festival-grid"></div>
+  </section>
+
+  <!-- Hidden until asked for. The defaults are good; most people never open this. -->
+  <section class="section" id="section-tune" hidden>
+    <div class="section-head">
+      <div>
+        <h2>What kind of playlist?</h2>
+        <p class="section-sub">Pick a starting point, or fine-tune it below.</p>
+      </div>
+      <button class="btn ghost sm" id="close-tune" type="button">Done</button>
+    </div>
+
+    <div class="presets" id="presets" role="group" aria-label="Playlist style"></div>
+
+    <details class="advanced" id="advanced">
+      <summary>Fine-tune</summary>
+      <div class="controls">
+        <div class="control">
+          <label for="discovery">Familiar <span>↔</span> Discovery</label>
+          <input type="range" id="discovery" min="0" max="100" value="62" />
+          <p class="control-value" id="discovery-value"></p>
+        </div>
+        <div class="control">
+          <label for="mainstream">Deep cuts <span>↔</span> The hits</label>
+          <input type="range" id="mainstream" min="0" max="100" value="48" />
+          <p class="control-value" id="mainstream-value"></p>
+        </div>
+        <div class="control">
+          <label for="length">Length</label>
+          <input type="range" id="length" min="15" max="80" step="5" value="40" />
+          <p class="control-value" id="length-value"></p>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="section" id="section-results" hidden>
+    <div id="results"></div>
+  </section>
+
+  <section class="section" id="section-discover">
+    <div class="section-head">
+      <div>
+        <h2>Beyond the festival</h2>
+        <p class="section-sub">
+          Artists you've never played, found from your own listening — no festival attached.
+        </p>
+      </div>
+      <button class="btn" id="discover" type="button">Find artists</button>
+    </div>
+    <div class="progress" id="discover-progress" hidden></div>
+    <div id="discover-results"></div>
+  </section>
+
+</main>
+
+<!-- Sticky action bar: appears once a festival is chosen -->
+<div class="actionbar" id="actionbar" hidden>
+  <div class="actionbar-inner">
+    <div class="actionbar-info">
+      <span class="actionbar-title" id="actionbar-title"></span>
+      <span class="actionbar-meta" id="actionbar-meta"></span>
+    </div>
+    <div class="progress inline" id="progress" hidden></div>
+    <button class="btn ghost sm" id="customise" type="button">Customise</button>
+    <button class="btn primary" id="generate" type="button">Build playlist</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<dialog id="lineup-dialog">
+  <form method="dialog" class="dialog-inner">
+    <h3>Paste the real lineup</h3>
+    <p class="hint">
+      One artist per line, or separated by commas. Copy it straight off the festival's
+      site — day headers, stage names and duplicates get cleaned up automatically.
+    </p>
+    <textarea id="lineup-text" rows="12" spellcheck="false"></textarea>
+    <div class="dialog-actions">
+      <button class="btn ghost" value="cancel" type="submit">Cancel</button>
+      <button class="btn primary" value="save" id="lineup-save" type="submit">Use this lineup</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>
