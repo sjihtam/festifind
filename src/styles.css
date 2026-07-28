@@ -380,18 +380,28 @@ main {
 
 /* Colour band carries the festival's identity */
 .fest-band {
-  height: 76px;
+  height: 104px;
   background: linear-gradient(125deg, var(--a1), var(--a2));
+  background-size: cover;
+  background-position: center 42%;
   position: relative;
   overflow: hidden;
 }
-.fest-band::after {
+/* Sheen only on the generated gradient; a photo doesn't need faking. */
+.fest-band:not(.has-photo)::after {
   content: '';
   position: absolute;
   inset: 0;
   background:
     radial-gradient(90% 130% at 15% 120%, rgba(255,255,255,0.36), transparent 58%),
     radial-gradient(60% 100% at 88% -20%, rgba(255,255,255,0.22), transparent 60%);
+}
+/* Scrim under the date chip so it stays readable on a bright photo. */
+.fest-band.has-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.28), transparent 55%);
 }
 .fest-when {
   position: absolute;

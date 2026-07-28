@@ -216,14 +216,32 @@ you're actually going to, rather than inventing a lineup.
 
 ### Lineups still move
 
-Drop-outs, late additions and day splits happen after publication. Every card has
-a **Paste real lineup** button — copy the lineup off the festival's site and paste
-it. The parser handles the usual mess: day headers, stage names, numbered lists,
-bullets, comma-separated runs, `(live)` / `(DJ set)` suffixes, and duplicates.
-Pasted lineups are saved locally and override the bundled data.
+Drop-outs, late additions and day splits happen after publication, so treat the
+bundled lineups as a snapshot and check the official site if it matters.
+
+The paste-your-own-lineup control was removed from the cards to keep them clean
+for non-technical users. It survives only on festivals with **no published bill**
+(currently just ADE), where it appears as **Add the acts you want** — without it
+those cards would have nothing to match against. The parser behind it still
+handles day headers, stage names, numbered lists, bullets, comma-separated runs,
+`(live)` / `(DJ set)` suffixes and duplicates, and pasted lineups are saved
+locally. To re-enable it everywhere, drop the `count ?` guard on the `data-act
+="paste"` button in `renderFestivals()`.
 
 Anything that can't be matched on Spotify is listed under the playlist rather than
 silently dropped.
+
+### Card photos
+
+Nine of the twelve festivals show a photo from **Wikimedia Commons**, stored as an
+`image` object in `data/festivals.json` with the photographer and licence. CC BY
+and CC BY-SA require attribution, so the app renders a **Photo credits** list under
+the festival grid linking each file's Commons page — that's a licence obligation,
+not decoration. Dekmantel, Solar Weekend and Wildeburg have no suitable freely
+licensed photo and fall back to the generated gradient.
+
+Commons search is noisy (searching "Dekmantel" returns audio pronunciation files),
+so these were hand-picked rather than fetched automatically.
 
 ---
 

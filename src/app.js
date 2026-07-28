@@ -297,7 +297,7 @@ function renderFestivals() {
     card.style.setProperty('--a1', c1);
     card.style.setProperty('--a2', c2);
     card.innerHTML = `
-      <div class="fest-band">
+      <div class="fest-band${f.image ? ' has-photo' : ''}">
         <span class="fest-check">✓</span>
         <span class="fest-when"></span>
       </div>
@@ -311,10 +311,20 @@ function renderFestivals() {
         ${custom ? '<span class="tag custom">your lineup</span>' : lineupStatusTag(f)}
       </div>
       <div class="fest-actions">
-        <button class="linklike" data-act="paste" type="button">${custom ? 'Edit lineup' : 'Paste real lineup'}</button>
-        ${custom ? '<button class="linklike" data-act="reset" type="button">Reset</button>' : ''}
+        ${/* Festivals with no published bill can't work without acts, so they
+              keep a way in. Everything else is just the official-site link. */
+          count ? '' : '<button class="linklike" data-act="paste" type="button">Add the acts you want</button>'}
+        ${custom ? '<button class="linklike" data-act="reset" type="button">Reset lineup</button>' : ''}
         <a class="linklike" href="${f.url}" target="_blank" rel="noopener noreferrer">Official site ↗</a>
       </div>`;
+
+    if (f.image) {
+      const band = card.querySelector('.fest-band');
+      // Set as a background rather than an <img> so the gradient scrim can sit
+      // over it and keep the date chip readable on any photo.
+      band.style.backgroundImage =
+        `linear-gradient(150deg, color-mix(in srgb, ${c1} 62%, transparent), color-mix(in srgb, ${c2} 38%, transparent)), url("${f.image.url}")`;
+    }
 
     // textContent, not innerHTML — festival data is data, not markup.
     card.querySelector('.fest-when').textContent = relativeWhen(f);
@@ -339,6 +349,32 @@ function renderFestivals() {
 
     grid.appendChild(card);
   }
+
+  renderPhotoCredits(list);
+}
+
+/**
+ * CC BY and CC BY-SA both require attribution, so the credits are part of
+ * shipping the photos, not an optional extra.
+ */
+function renderPhotoCredits(list) {
+  const box = $('#photo-credits');
+  const withPhotos = list.filter((f) => f.image);
+  if (!withPhotos.length) { box.hidden = true; return; }
+
+  box.hidden = false;
+  box.innerHTML = `<summary>Photo credits</summary><p></p>`;
+  const p = box.querySelector('p');
+  p.append('Festival photos from Wikimedia Commons: ');
+  withPhotos.forEach((f, i) => {
+    const a = document.createElement('a');
+    a.href = f.image.page;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = `${f.name} — ${f.image.by} (${f.image.license})`;
+    p.append(a);
+    p.append(i === withPhotos.length - 1 ? '.' : ' · ');
+  });
 }
 
 function renderActionBar() {
@@ -623,7 +659,7 @@ async function generate() {
 
   if (!lineupFor(state.selected).length) {
     return toast(
-      `${state.selected.name} has no lineup published as one list. Use “Paste real lineup” on the card.`,
+      `${state.selected.name} has no lineup published as one list. Use “Add the acts you want” on the card.`,
       true
     );
   }
@@ -904,7 +940,9 @@ function enterDemoMode() {
         artist,
         score: 1.4 - i * 0.03,
         isKnown: i % 3 === 0,
-        why: i % 3 === 0 ? 'Already in your library' : 'New to you · matches your deep house',
+        why: i % 3 === 0
+          ? 'You already listen to this artist'
+          : 'Outside your top artists · matches your deep house',
       },
       alreadySaved: i % 5 === 0,
       alreadyPlayed: i % 7 === 0,
