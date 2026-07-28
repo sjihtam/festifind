@@ -111,20 +111,43 @@ export async function buildTasteProfile(onProgress = () => {}) {
   // Following someone is an explicit, deliberate act — weight it heavily.
   followed.forEach((artist) => noteArtist(artist, 1.4));
 
-  // Saved tracks: credited to the primary artist, with diminishing returns so a
-  // single 80-track album obsession doesn't drown out everything else.
+  // EVERY credited artist counts, not only the lead name. Crediting artists[0]
+  // alone was why featured and collaborating artists kept coming back as "new to
+  // you" — you had listened to them plenty, just never as the main artist.
+  const creditWeight = (index) => (index === 0 ? 1 : 0.55);
+
   const savedByArtist = new Map();
   for (const item of saved) {
-    const artist = item?.track?.artists?.[0];
-    if (artist?.id) addWeight(savedByArtist, artist.id, 1);
+    (item?.track?.artists || []).forEach((artist, i) => {
+      if (artist?.id) addWeight(savedByArtist, artist.id, creditWeight(i));
+    });
   }
+  // Diminishing returns, so one 80-track album obsession doesn't drown out
+  // everything else.
   for (const [id, count] of savedByArtist) {
     addWeight(affinity, id, Math.min(Math.sqrt(count) * 0.35, 1.6));
   }
 
+  // Top *tracks* previously contributed nothing to affinity — only top *artists*
+  // did, and that list is capped at 50 per time range. An artist you play
+  // constantly but who sits outside that cap was invisible to the whole model.
+  for (const [term, list] of [
+    ['short_term', shortTracks],
+    ['medium_term', mediumTracks],
+    ['long_term', longTracks],
+  ]) {
+    list.forEach((track, rank) => {
+      (track?.artists || []).forEach((artist, i) => {
+        if (!artist?.id) return;
+        addWeight(affinity, artist.id, TERM_WEIGHT[term] * rankWeight(rank) * 0.5 * creditWeight(i));
+      });
+    });
+  }
+
   for (const item of recent) {
-    const artist = item?.track?.artists?.[0];
-    if (artist?.id) addWeight(affinity, artist.id, 0.12);
+    (item?.track?.artists || []).forEach((artist, i) => {
+      if (artist?.id) addWeight(affinity, artist.id, 0.12 * creditWeight(i));
+    });
   }
 
   // --- Genre + token vectors ----------------------------------------------
@@ -172,16 +195,21 @@ export async function buildTasteProfile(onProgress = () => {}) {
   const years = allTopTracks.map(releaseYear).filter(Boolean);
 
   const knownArtistIds = new Set(affinity.keys());
-  const knownTrackIds = new Set(
-    [...allTopTracks, ...saved.map((s) => s.track)].filter(Boolean).map((t) => t.id)
-  );
-  // Match on name too: the same song exists under many IDs (remaster, single,
-  // deluxe edition, regional release), and ID-only dedupe misses all of them.
-  const knownTrackNames = new Set(
-    [...allTopTracks, ...saved.map((s) => s.track)]
-      .filter(Boolean)
-      .map((t) => `${t.artists?.[0]?.name} – ${normalizeTitle(t.name)}`.toLowerCase())
-  );
+
+  // Saved and played are different facts and must not be conflated: a track in
+  // your top tracks is one you play a lot, which is NOT the same as one you
+  // saved. Labelling the former "in your library" was simply wrong.
+  //
+  // Each is matched by name as well as ID, because the same song exists under
+  // many IDs (remaster, single, deluxe edition, regional release).
+  const trackKey = (t) => `${t.artists?.[0]?.name} – ${normalizeTitle(t.name)}`.toLowerCase();
+
+  const savedTracks = saved.map((s) => s.track).filter(Boolean);
+  const savedTrackIds = new Set(savedTracks.map((t) => t.id));
+  const savedTrackNames = new Set(savedTracks.map(trackKey));
+
+  const playedTrackIds = new Set(allTopTracks.map((t) => t.id));
+  const playedTrackNames = new Set(allTopTracks.map(trackKey));
 
   const popularity = stats(trackPopularities);
 
@@ -207,8 +235,10 @@ export async function buildTasteProfile(onProgress = () => {}) {
     rawGenreWeights: genreWeights,
     affinity,
     knownArtistIds,
-    knownTrackIds,
-    knownTrackNames,
+    savedTrackIds,
+    savedTrackNames,
+    playedTrackIds,
+    playedTrackNames,
     popularity,
     artistPopularity: stats(artistPopularities),
     era: stats(years.length ? years : [new Date().getFullYear() - 6]),

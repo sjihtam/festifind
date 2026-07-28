@@ -36,8 +36,10 @@ function houseListener({ affinity = new Map() } = {}) {
     popularity: { mean: 42, std: 18 },
     era: { mean: 2019, std: 5 },
     knownArtistIds: new Set(affinity.keys()),
-    knownTrackIds: new Set(),
-    knownTrackNames: new Set(),
+    savedTrackIds: new Set(),
+    savedTrackNames: new Set(),
+    playedTrackIds: new Set(),
+    playedTrackNames: new Set(),
   };
 }
 

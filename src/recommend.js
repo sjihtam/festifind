@@ -207,10 +207,14 @@ function explain({ match, familiarity, isKnown, artist, taste }) {
     )
     .slice(0, 2);
 
+  // Deliberately understated. Spotify only exposes your top 50 artists per time
+  // range, your follows, recent plays and saved tracks — so an artist missing
+  // from all of that is "outside your top artists", which is provable, and NOT
+  // "new to you", which isn't: you may well know them from playlists or radio.
   if (isKnown && familiarity > 0.45) return 'One of your most-played artists';
-  if (isKnown) return 'Already in your library';
-  if (shared.length) return `New to you · matches your ${shared.join(' + ')}`;
-  if (match > 0.25) return 'New to you · close to your usual sound';
+  if (isKnown) return 'You already listen to this artist';
+  if (shared.length) return `Outside your top artists · matches your ${shared.join(' + ')}`;
+  if (match > 0.25) return 'Outside your top artists · close to your usual sound';
   return 'Wildcard from the lineup';
 }
 
@@ -315,15 +319,20 @@ export async function selectTracks(
           const eraScore = gaussianFit(year, taste.era.mean, Math.max(taste.era.std * 1.6, 7));
 
           const key = `${track.artists?.[0]?.name} – ${normalizeTitle(track.name)}`.toLowerCase();
-          const alreadyKnown = taste.knownTrackIds.has(track.id) || taste.knownTrackNames.has(key);
+          // Saved and played are reported separately so the UI can say which it
+          // actually is, rather than calling a much-played track "in your library".
+          const alreadySaved = taste.savedTrackIds.has(track.id) || taste.savedTrackNames.has(key);
+          const alreadyPlayed = taste.playedTrackIds.has(track.id) || taste.playedTrackNames.has(key);
 
-          // In discovery mode a song you already have saved is a wasted slot.
-          const knownPenalty = alreadyKnown ? -0.55 * discovery + 0.12 * (1 - discovery) : 0;
+          // In discovery mode a song you already know is a wasted slot.
+          const knownPenalty =
+            alreadySaved || alreadyPlayed ? -0.55 * discovery + 0.12 * (1 - discovery) : 0;
 
           return {
             track,
             trackScore: 0.62 * popScore + 0.22 * eraScore + knownPenalty + 0.16,
-            alreadyKnown,
+            alreadySaved,
+            alreadyPlayed,
           };
         })
         .sort((a, b) => b.trackScore - a.trackScore)

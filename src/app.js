@@ -465,7 +465,7 @@ function renderRail(container, ranked, limit) {
 function renderTrackList(container, picks) {
   container.innerHTML = '';
   picks.forEach((pick, i) => {
-    const { track, entry, alreadyKnown } = pick;
+    const { track, entry, alreadySaved, alreadyPlayed } = pick;
     const row = document.createElement('div');
     row.className = 'trk';
     row.innerHTML = `
@@ -482,8 +482,12 @@ function renderTrackList(container, picks) {
 
     const title = row.querySelector('.trk-title');
     title.textContent = track.name;
-    if (!entry.isKnown) title.insertAdjacentHTML('beforeend', '<span class="badge">new</span>');
-    else if (alreadyKnown) title.insertAdjacentHTML('beforeend', '<span class="badge known">in your library</span>');
+    // Track-level badges state only what was actually measured. "Saved" means it
+    // is in your Liked Songs; "you play this" means it is in your top tracks,
+    // which is a different thing and was previously mislabelled as saved.
+    if (alreadySaved) title.insertAdjacentHTML('beforeend', '<span class="badge known">saved</span>');
+    else if (alreadyPlayed) title.insertAdjacentHTML('beforeend', '<span class="badge known">you play this</span>');
+    else if (!entry.isKnown) title.insertAdjacentHTML('beforeend', '<span class="badge">new artist</span>');
 
     row.querySelector('.trk-sub').textContent = track.artists.map((a) => a.name).join(', ');
     row.querySelector('.trk-why').textContent = entry.why;
@@ -570,7 +574,7 @@ function renderFestivalResults() {
           <div class="plhero-stats">${pills([
             [picks.length, 'tracks'],
             [artistCount, 'artists'],
-            [newToYou, 'new to you'],
+            [newToYou, 'outside your top artists'],
             [ranked.length, 'of the lineup matched'],
           ])}</div>
           <div class="save-row">
@@ -902,7 +906,8 @@ function enterDemoMode() {
         isKnown: i % 3 === 0,
         why: i % 3 === 0 ? 'Already in your library' : 'New to you · matches your deep house',
       },
-      alreadyKnown: i % 5 === 0,
+      alreadySaved: i % 5 === 0,
+      alreadyPlayed: i % 7 === 0,
     };
   });
 
