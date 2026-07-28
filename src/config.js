@@ -6,8 +6,8 @@
 // Fill SPOTIFY_CLIENT_ID in once and everyone else just clicks "Continue with
 // Spotify" — they never see any of this.
 
-export const SPOTIFY_CLIENT_ID = '';
+export const SPOTIFY_CLIENT_ID = '48b77de33ed0457db2fc0c81646f61c7';
 
 // Optional. Shown to someone who isn't on the app's allowlist yet, so they know
 // who to ask. E.g. 'Sam' or 'sam@example.com'.
-export const OWNER_CONTACT = '';
+export const OWNER_CONTACT = 'sjihtam';
