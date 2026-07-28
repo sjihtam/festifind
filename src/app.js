@@ -11,6 +11,7 @@ import { discoverArtists } from './discover.js';
 
 const $ = (sel) => document.querySelector(sel);
 const CUSTOM_LINEUPS = 'festifind.customLineups';
+const CARD_ART = 'festifind.cardArt';
 
 const state = {
   festivals: [],
@@ -21,7 +22,57 @@ const state = {
   when: 'upcoming',
   preset: 'balanced',
   customLineups: loadCustomLineups(),
+  cardArt: loadCardArt(),
 };
+
+function loadCardArt() {
+  try {
+    return JSON.parse(localStorage.getItem(CARD_ART) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Some festivals have no freely licensed photo anywhere — Wikimedia Commons has
+ * nothing for Dekmantel, Solar Weekend or Wildeburg, and the near-misses it
+ * returns are unrelated events at the same venue. Rather than mislabel one of
+ * those, fall back to a headliner's own Spotify press photo: always available,
+ * genuinely relevant, and no licensing problem.
+ *
+ * One search per festival, cached, and only for the ones actually missing art.
+ */
+async function hydrateMissingArtwork() {
+  const missing = state.festivals.filter(
+    (f) => !f.image && !state.cardArt[f.id] && lineupFor(f).length
+  );
+  if (!missing.length) return;
+
+  let found = false;
+  await Promise.all(
+    missing.map(async (f) => {
+      // Try a couple of names in case the first headliner has no photo.
+      for (const name of lineupFor(f).slice(0, 3)) {
+        try {
+          const [artist] = await api.searchArtist(name, state.taste?.market || 'NL');
+          const url = artist?.images?.[0]?.url;
+          if (url) {
+            state.cardArt[f.id] = url;
+            found = true;
+            return;
+          }
+        } catch {
+          return; // no token yet, or search failed — the gradient still looks fine
+        }
+      }
+    })
+  );
+
+  if (found) {
+    localStorage.setItem(CARD_ART, JSON.stringify(state.cardArt));
+    renderFestivals();
+  }
+}
 
 /**
  * Presets are the primary control. Two abstract axes are a lot to ask of someone
@@ -150,16 +201,80 @@ function renderSession() {
   $('#logout').onclick = () => { logout(); location.reload(); };
 }
 
-/** Decorative festival names behind the hero. */
-function renderHeroChips() {
+/**
+ * Hero artwork: real artists from the 2026 lineups in this app, with some tiles
+ * lit and the rest dimmed — the whole idea of the product in one image, which is
+ * that a festival bill gets narrowed down to the acts that fit you.
+ *
+ * All freely licensed from Wikimedia Commons. CC BY and CC BY-SA oblige us to
+ * credit, which renderHeroCredits does directly under the panel.
+ */
+const HERO_ARTISTS = [
+  { name: 'Tyler, The Creator', festival: 'Lowlands', match: true,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Tyler%2C_The_Creator_%288048745695%29_%28cropped%29.jpg/330px-Tyler%2C_The_Creator_%288048745695%29_%28cropped%29.jpg',
+    by: 'Incase', license: 'CC BY 2.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Tyler,_The_Creator_(8048745695)_(cropped).jpg' },
+  { name: 'Lorde', festival: 'Lowlands', match: false,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/Lorde_%282022%29_%28cropped%29.jpg/330px-Lorde_%282022%29_%28cropped%29.jpg',
+    by: 'Raph_PH', license: 'CC BY 2.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Lorde_(2022)_(cropped).jpg' },
+  { name: 'Charlotte de Witte', festival: 'Awakenings', match: true,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Charlotte_De_Witte_2023.jpg/330px-Charlotte_De_Witte_2023.jpg',
+    by: 'ManoSolo13241324', license: 'CC BY-SA 4.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Charlotte_De_Witte_2023.jpg' },
+  { name: 'Little Simz', festival: 'Down The Rabbit Hole', match: true,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Little_Simz_Performing.jpg/330px-Little_Simz_Performing.jpg',
+    by: 'GeorgeMichaelBaker', license: 'CC BY-SA 4.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Little_Simz_Performing.jpg' },
+  { name: 'Peggy Gou', festival: 'Dekmantel', match: false,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Peggy_Gou_2019.jpg/330px-Peggy_Gou_2019.jpg',
+    by: 'Davide Guidone', license: 'Public domain',
+    page: 'https://commons.wikimedia.org/wiki/File:Peggy_Gou_2019.jpg' },
+  { name: 'Skrillex', festival: 'Dekmantel', match: false,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Skrillex.jpg/330px-Skrillex.jpg',
+    by: 'Weekly Dig', license: 'CC BY 2.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Skrillex.jpg' },
+  { name: 'Florence Welch', festival: 'Down The Rabbit Hole', match: false,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Florence_Welch.jpg/330px-Florence_Welch.jpg',
+    by: 'Kevin Utting', license: 'CC BY 2.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Florence_Welch.jpg' },
+  { name: 'Nina Kraviz', festival: 'Awakenings', match: true,
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/Nina_Kraviz%2C_2012.jpg/330px-Nina_Kraviz%2C_2012.jpg',
+    by: 'Alec Luhn', license: 'CC BY 2.0',
+    page: 'https://commons.wikimedia.org/wiki/File:Nina_Kraviz,_2012.jpg' },
+];
+
+function renderHeroArt() {
   const grid = $('#hero-grid');
   grid.innerHTML = '';
-  for (const f of state.festivals.slice(0, 8)) {
-    const chip = document.createElement('div');
-    chip.className = 'hero-chip';
-    chip.textContent = f.name;
-    grid.appendChild(chip);
-  }
+
+  HERO_ARTISTS.forEach((artist, i) => {
+    const tile = document.createElement('div');
+    tile.className = `hero-tile${artist.match ? ' matched' : ''}`;
+    tile.style.setProperty('--i', String(i));
+    tile.innerHTML = `<img alt="" loading="lazy" /><span class="hero-tag"></span>`;
+    tile.querySelector('img').src = artist.url;
+    tile.querySelector('.hero-tag').textContent = artist.name;
+    grid.appendChild(tile);
+  });
+
+  renderHeroCredits();
+}
+
+function renderHeroCredits() {
+  const box = $('#hero-credits');
+  if (!box) return;
+  box.innerHTML = `<summary>Artist photo credits</summary><p></p>`;
+  const p = box.querySelector('p');
+  p.append('Wikimedia Commons: ');
+  HERO_ARTISTS.forEach((a, i) => {
+    const link = document.createElement('a');
+    link.href = a.page;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `${a.name} — ${a.by} (${a.license})`;
+    p.append(link, i === HERO_ARTISTS.length - 1 ? '.' : ' · ');
+  });
 }
 
 function showApp(loggedIn) {
@@ -171,6 +286,9 @@ function showApp(loggedIn) {
 function renderConnect() {
   if (isLoggedIn()) {
     showApp(true);
+    // Fills in artwork for festivals with no licensed photo. Fire-and-forget:
+    // it re-renders the grid if it finds anything, and is harmless if it fails.
+    hydrateMissingArtwork();
     return;
   }
 
@@ -296,8 +414,9 @@ function renderFestivals() {
     card.className = `fest${isPast(f) ? ' past' : ''}${state.selected?.id === f.id ? ' selected' : ''}`;
     card.style.setProperty('--a1', c1);
     card.style.setProperty('--a2', c2);
+    const photo = f.image?.url || state.cardArt[f.id];
     card.innerHTML = `
-      <div class="fest-band${f.image ? ' has-photo' : ''}">
+      <div class="fest-band${photo ? ' has-photo' : ''}">
         <span class="fest-check">✓</span>
         <span class="fest-when"></span>
       </div>
@@ -318,12 +437,12 @@ function renderFestivals() {
         <a class="linklike" href="${f.url}" target="_blank" rel="noopener noreferrer">Official site ↗</a>
       </div>`;
 
-    if (f.image) {
+    if (photo) {
       const band = card.querySelector('.fest-band');
       // Set as a background rather than an <img> so the gradient scrim can sit
       // over it and keep the date chip readable on any photo.
       band.style.backgroundImage =
-        `linear-gradient(150deg, color-mix(in srgb, ${c1} 62%, transparent), color-mix(in srgb, ${c2} 38%, transparent)), url("${f.image.url}")`;
+        `linear-gradient(150deg, color-mix(in srgb, ${c1} 62%, transparent), color-mix(in srgb, ${c2} 38%, transparent)), url("${photo}")`;
     }
 
     // textContent, not innerHTML — festival data is data, not markup.
@@ -365,7 +484,10 @@ function renderPhotoCredits(list) {
   box.hidden = false;
   box.innerHTML = `<summary>Photo credits</summary><p></p>`;
   const p = box.querySelector('p');
-  p.append('Festival photos from Wikimedia Commons: ');
+  p.append(
+    'Cards without a licensed festival photo show a headliner’s artist image from Spotify. ' +
+    'Festival photos from Wikimedia Commons: '
+  );
   withPhotos.forEach((f, i) => {
     const a = document.createElement('a');
     a.href = f.image.page;
@@ -848,7 +970,7 @@ async function init() {
   const res = await fetch(new URL('../data/festivals.json', import.meta.url));
   state.festivals = (await res.json()).festivals;
 
-  renderHeroChips();
+  renderHeroArt();
   renderFestivals();
   renderPresets();
   syncControls();

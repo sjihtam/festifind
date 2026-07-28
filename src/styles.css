@@ -210,63 +210,100 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.028em; font-weight: 640; }
 /* The logo's bar motif, blown up and gently animated. */
 .hero-art {
   position: relative;
-  aspect-ratio: 1 / 0.92;
+  margin: 0;
   border-radius: var(--r-xl);
+  padding-bottom: 34px;
   background:
-    radial-gradient(120% 100% at 50% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 64%),
+    radial-gradient(120% 90% at 50% 108%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
     var(--surface);
   box-shadow: var(--sh-2);
   overflow: hidden;
-  display: grid;
-  place-items: end center;
 }
 
-.hero-bars {
-  position: absolute;
-  left: 11%;
-  right: 11%;
-  bottom: 30%;
-  height: 44%;
-  display: flex;
-  align-items: flex-end;
-  gap: 2.6%;
-}
-.hero-bars i {
-  flex: 1;
-  height: var(--h);
-  border-radius: var(--r-full);
-  background: linear-gradient(180deg, #A855F7, var(--accent));
-  transform-origin: bottom;
-  animation: pulse 3.2s var(--d) ease-in-out infinite alternate;
-}
-@keyframes pulse { to { transform: scaleY(0.62); } }
-
+/* A festival bill, with the acts that fit you lit and the rest dimmed. */
 .hero-grid {
   position: relative;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 0 10% 12%;
+  gap: 10px;
+  padding: 26px;
   width: 100%;
 }
-.hero-chip {
-  height: 30px;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  box-shadow: var(--sh-1);
-  display: grid;
-  place-items: center;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--text-3);
+
+.hero-tile {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  display: block;
-  line-height: 30px;
-  text-align: center;
-  padding: 0 8px;
+  background: var(--surface-2);
+  animation: tile-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i) * 70ms);
 }
+@keyframes tile-in { from { opacity: 0; transform: scale(0.9) translateY(8px); } }
+
+.hero-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: grayscale(1) contrast(0.9);
+  opacity: 0.32;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+/* The picked ones: full colour, ringed, slightly forward. */
+.hero-tile.matched img { filter: none; opacity: 1; }
+.hero-tile.matched {
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 22px rgba(0, 0, 0, 0.22);
+  z-index: 1;
+}
+.hero-tile.matched::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 46%, rgba(0, 0, 0, 0.72));
+}
+
+.hero-tag {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  bottom: 6px;
+  z-index: 2;
+  font-size: 9.5px;
+  font-weight: 620;
+  letter-spacing: -0.005em;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.hero-tile.matched .hero-tag { opacity: 1; }
+
+.hero-caption {
+  position: absolute;
+  left: 26px;
+  bottom: 14px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 560;
+  color: var(--text-2);
+}
+.hero-caption .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+#hero-credits { margin-top: 14px; }
+#hero-credits p { font-size: 12px; line-height: 1.6; color: var(--text-3); }
 
 @media (max-width: 860px) {
   .hero-inner { grid-template-columns: 1fr; }
