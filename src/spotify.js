@@ -74,7 +74,24 @@ async function request(path, { method = 'GET', body, retries = 3 } = {}) {
       if (res.status === 204) return null;
 
       const text = await res.text();
-      const json = text ? JSON.parse(text) : null;
+
+      // Spotify normally returns JSON, but proxies, captive portals, CDN error
+      // pages and rate-limit walls return HTML or plain text. Parsing that blindly
+      // surfaced a raw "JSON parse error" with no clue where it came from.
+      let json = null;
+      if (text) {
+        try {
+          json = JSON.parse(text);
+        } catch {
+          throw new SpotifyError(
+            `Spotify returned something that isn't JSON (HTTP ${res.status}) from ${path.split('?')[0]}. ` +
+            `First bytes: ${JSON.stringify(text.slice(0, 80))}. ` +
+            `That usually means a network or proxy issue rather than a problem with your account.`,
+            res.status,
+            text.slice(0, 200)
+          );
+        }
+      }
 
       if (!res.ok) {
         const detail = json?.error?.message || text || res.statusText;

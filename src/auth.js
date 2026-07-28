@@ -9,6 +9,25 @@ import { SPOTIFY_CLIENT_ID, OWNER_CONTACT } from './config.js';
 const AUTH_HOST = 'https://accounts.spotify.com';
 
 /**
+ * Spotify's token endpoint answers with JSON — except when something in between
+ * doesn't. A proxy, a captive portal or an outage returns HTML or plain text, and
+ * calling res.json() on that throws a bare "JSON parse error" that tells the user
+ * nothing. Read the body once and report what actually came back.
+ */
+async function readJson(res, what) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      `${what} got a non-JSON reply from Spotify (HTTP ${res.status}). ` +
+      `It starts with: ${JSON.stringify(text.slice(0, 80))}. ` +
+      `If you are on a network with a login page or a filtering proxy, that is the usual cause.`
+    );
+  }
+}
+
+/**
  * The redirect target is the app's own base URL — the directory the page lives
  * in — rather than a /callback route.
  *
@@ -191,7 +210,7 @@ export async function completeLoginIfCallback() {
     }),
   });
 
-  const body = await res.json();
+  const body = await readJson(res, 'Sign-in');
   if (!res.ok) {
     throw new Error(
       `Token exchange failed (${res.status}): ${body.error_description || body.error || 'unknown'}`
@@ -217,7 +236,7 @@ async function refresh() {
     }),
   });
 
-  const body = await res.json();
+  const body = await readJson(res, 'Session refresh');
   if (!res.ok) {
     logout();
     throw new Error('Session expired. Connect to Spotify again.');

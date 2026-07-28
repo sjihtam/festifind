@@ -968,7 +968,17 @@ async function init() {
   // Resolved against this module's own URL, so it survives being served from a
   // subpath like /festifind/ on GitHub Pages.
   const res = await fetch(new URL('../data/festivals.json', import.meta.url));
-  state.festivals = (await res.json()).festivals;
+  const raw = await res.text();
+  try {
+    state.festivals = JSON.parse(raw).festivals;
+  } catch {
+    // A 404 page, an offline placeholder or a captive portal lands here. Say so
+    // rather than leaking a bare JSON parse error.
+    throw new Error(
+      `Could not load the festival list (HTTP ${res.status}). The server sent ` +
+      `${JSON.stringify(raw.slice(0, 60))} instead of JSON.`
+    );
+  }
 
   renderHeroArt();
   renderFestivals();
