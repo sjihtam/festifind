@@ -279,6 +279,32 @@ export function runTests() {
       `fresh=${fresh.toFixed(3)} old=${old.toFixed(3)}`);
   }
 
+  // ── 7f. Match percentages are calibrated and spread apart ────────────────
+  // The displayed % must separate the tiers a listener actually recognises:
+  // most-played favourites in the 90s, strong unfamiliar fits well below them,
+  // partial fits lower still, wildcards near zero — with real gaps between,
+  // not everything mushed into the 40s.
+  {
+    const taste = houseListener({ affinity: new Map([['fav', 8]]) });
+    const ranked = scoreArtists(
+      [
+        artist('fav', 'Most Played', ['deep house', 'melodic house']),
+        artist('fit', 'Strong Unknown Fit', ['deep house', 'melodic house']),
+        artist('partial', 'Partial Fit', ['melodic techno']),
+        artist('wild', 'Wildcard', ['polka']),
+      ],
+      taste,
+      { discovery: 0.25, mainstream: 0.5 }
+    );
+    const p = Object.fromEntries(ranked.map((r) => [r.artist.id, r.percent]));
+    check('percent tiers: favourite ≥ 90, wildcard ≤ 10',
+      p.fav >= 90 && p.wild <= 10,
+      JSON.stringify(p));
+    check('percent tiers are separated by real gaps',
+      p.fav - p.fit >= 10 && p.fit - p.partial >= 15 && p.partial - p.wild >= 10,
+      JSON.stringify(p));
+  }
+
   // ── 8. Title normalisation collapses release variants ───────────────────
   {
     const variants = [

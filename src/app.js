@@ -526,7 +526,11 @@ function artMosaic(picks) {
 
 function renderRail(container, ranked, limit) {
   container.innerHTML = '';
-  for (const entry of ranked.slice(0, limit)) {
+  // Display order follows the % the user sees. The engine's ranking score also
+  // carries lineup-context terms, and letting it order the rail occasionally
+  // put an 75% above an 80% — technically right, visibly wrong.
+  const display = [...ranked].sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0));
+  for (const entry of display.slice(0, limit)) {
     const { artist } = entry;
     const card = document.createElement('a');
     card.className = 'acard';
@@ -544,8 +548,7 @@ function renderRail(container, ranked, limit) {
 
     card.querySelector('.acard-name').textContent = artist.name;
     card.querySelector('.acard-why').textContent = entry.why;
-    card.querySelector('.acard-fit').textContent =
-      `${Math.round((Math.min(entry.score, 1.6) / 1.6) * 100)}% match`;
+    card.querySelector('.acard-fit').textContent = `${entry.percent}% match`;
     container.appendChild(card);
   }
 }
@@ -990,6 +993,7 @@ function enterDemoMode() {
       entry: {
         artist,
         score: 1.4 - i * 0.03,
+        percent: Math.max(8, 96 - i * 4),
         isKnown: i % 3 === 0,
         seen: i % 3 === 0,
         why: i % 3 === 0

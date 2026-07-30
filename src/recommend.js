@@ -315,6 +315,7 @@ export function scoreArtists(
       if (!hasGenres) match *= 0.62; // discount the guess, but don't bury them
 
       const affinityRaw = taste.affinity.get(artist.id) || 0;
+      const percent = matchPercent({ match, affinity: affinityRaw, usedPrior: !hasGenres });
       const familiarity = Math.min(affinityRaw / maxAffinity, 1);
       // Labels use ABSOLUTE evidence, deliberately not `familiarity`. The old
       // test (affinity above 2% of your #1 artist) meant the labels shifted
@@ -359,14 +360,37 @@ export function scoreArtists(
         isKnown,
         popFit,
         usedPrior: !hasGenres,
-        why: explain({ match, familiarity, seen, isKnown, popFit, artist, taste }),
+        percent,
+        why: explain({ percent, familiarity, seen, isKnown, artist, taste }),
       };
     })
     .sort((a, b) => b.score - a.score);
 }
 
+/**
+ * The "% match" shown to the user. Deliberately NOT the ranking score — that
+ * includes lineup-context terms (novelty, popularity fit) that say nothing
+ * about how much the user will like the artist, and its raw cosine core
+ * clusters so tightly that every act reads as a 40-something.
+ *
+ * Two signals, combined noisy-OR style so either alone can carry a high
+ * number: proven listening (absolute affinity — your most-played artist is a
+ * ~98% match by definition, however sparse their genre tags) and taste fit
+ * (passed through a saturating curve that stretches the crowded low-cosine
+ * range apart). Calibration: most-played favourites high 90s, strong unknown
+ * fits 60–80, partial fits 25–50, wildcards single digits. Capped at 99 —
+ * certainty isn't on offer — and floored at 2.
+ */
+export function matchPercent({ match, affinity = 0, usedPrior = false }) {
+  let fit = match / (match + 0.3);
+  if (usedPrior) fit *= 0.8; // guessed from the festival's profile, not their own
+  const fam = Math.min(1, affinity / 2.5) ** 0.75;
+  const p = 1 - (1 - fit) * (1 - 0.93 * fam);
+  return Math.round(Math.min(99, Math.max(2, p * 100)));
+}
+
 /** Short human-readable reason, shown next to each artist in the UI. */
-function explain({ match, familiarity, seen, isKnown, artist, taste }) {
+function explain({ percent, familiarity, seen, isKnown, artist, taste }) {
   const shared = (artist.genres || [])
     .filter((g) => taste.rawGenreWeights.has(g.toLowerCase()))
     .sort(
@@ -385,7 +409,9 @@ function explain({ match, familiarity, seen, isKnown, artist, taste }) {
   // enough to claim "you listen to them" — but calling them new would be false.
   if (seen) return 'Appears in your listening, but only just';
   if (shared.length) return `Outside your top artists · matches your ${shared.join(' + ')}`;
-  if (match > 0.25) return 'Outside your top artists · close to your usual sound';
+  // Keyed to the same number the user sees, so "wildcard" never sits beside a
+  // respectable-looking percentage.
+  if (percent >= 30) return 'Outside your top artists · close to your usual sound';
   return 'Wildcard from the lineup';
 }
 
