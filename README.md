@@ -223,7 +223,7 @@ from, and when it was `checked`:
 | Best Kept Secret | 12 – 14 Jun | partial, 12 |
 | Pinkpop | 19 – 21 Jun | partial, 13 |
 | Down The Rabbit Hole | 3 – 5 Jul | partial, 11 |
-| Wildeburg | 9 – 12 Jul | partial, 11 |
+| Wildeburg | 9 – 12 Jul | verified, 147 |
 | Awakenings | 10 – 12 Jul | partial, 15 |
 | NN North Sea Jazz | 10 – 12 Jul | partial, 24 |
 
