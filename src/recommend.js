@@ -432,22 +432,21 @@ function allocate(ranked, targetTracks) {
   let remaining = targetTracks;
 
   // Everyone selected gets one track first, so the playlist reflects the lineup
-  // rather than three artists on repeat.
+  // rather than a handful of artists on repeat.
   const pool = ranked.slice(0, targetTracks);
   for (const entry of pool) {
     if (remaining <= 0) break;
     alloc.set(entry.artist.id, 1);
     remaining--;
   }
-  // Then hand out seconds and thirds from the top down.
-  for (let pass = 0; pass < 2 && remaining > 0; pass++) {
-    for (const entry of pool) {
-      if (remaining <= 0) break;
-      const current = alloc.get(entry.artist.id) || 0;
-      if (current > pass + 1) continue;
-      alloc.set(entry.artist.id, current + 1);
-      remaining--;
-    }
+  // At most ONE second track, best matches first. Two tracks is emphasis;
+  // three is the same artist crowding out someone else's banger — breadth
+  // beats depth in a lineup sampler, and the playlist may simply come back
+  // shorter than the target instead.
+  for (const entry of pool) {
+    if (remaining <= 0) break;
+    alloc.set(entry.artist.id, 2);
+    remaining--;
   }
   return alloc;
 }
@@ -459,11 +458,13 @@ export async function selectTracks(
 ) {
   // Quality floor: `targetTracks` is a ceiling, not a quota. An artist below
   // the floor doesn't belong in the playlist even if there's room — a shorter
-  // playlist of likeable songs beats a full one padded with filler. The bar is
-  // relative to the best score, so a strong lineup raises it, with an absolute
-  // minimum so a uniformly weak lineup can't drag it to zero.
-  const floor = Math.max(0.3, 0.25 * (ranked[0]?.score || 0));
-  const worthy = ranked.filter((entry) => entry.score >= floor);
+  // playlist of likeable songs beats a full one padded with filler.
+  //
+  // The floor is the calibrated likeability percent, NOT the ranking score,
+  // and deliberately not relative to the best entry: familiarity inflates a
+  // favourite's score, and a bar set from it excluded perfectly good unknown
+  // fits — which then shrank the pool to a handful of artists on repeat.
+  const worthy = ranked.filter((entry) => (entry.percent ?? 100) >= 30);
 
   // Take a wider slice than we need, then let track scoring decide.
   const shortlist = worthy.slice(0, Math.min(worthy.length, Math.ceil(targetTracks * 1.1)));
@@ -510,6 +511,8 @@ export async function selectTracks(
       onProgress(++done, shortlist.length);
 
       const seenTitles = new Set();
+      // The artist's own popularity ceiling, for the signature-song term below.
+      const artistMaxPop = Math.max(...pool.map((t) => t?.popularity || 0), 1);
       const scored = pool
         .filter((track) => {
           if (!track?.id || track.is_playable === false) return false;
@@ -520,6 +523,11 @@ export async function selectTracks(
         })
         .map((track) => {
           const popScore = gaussianFit(track.popularity, targetTrackPop, 24);
+          // How defining this song is FOR THIS ARTIST, independent of the
+          // user's global popularity band. Without it, band-targeting kept
+          // passing over an act's biggest banger for a band-matching album
+          // cut — but the banger is what they'll play on stage.
+          const signature = (track.popularity || 0) / artistMaxPop;
           const year = Number(track.album?.release_date?.slice(0, 4));
           const eraScore = gaussianFit(year, taste.era.mean, Math.max(taste.era.std * 1.6, 7));
 
@@ -535,7 +543,11 @@ export async function selectTracks(
 
           return {
             track,
-            trackScore: 0.62 * popScore + 0.22 * eraScore + knownPenalty + 0.16,
+            // Signature outweighs band fit here on purpose: ACROSS artists the
+            // user's popularity band picks who plays; WITHIN one artist's
+            // catalogue, how defining the song is matters more than where it
+            // sits on the global charts.
+            trackScore: 0.32 * popScore + 0.36 * signature + 0.18 * eraScore + knownPenalty + 0.14,
             alreadySaved,
             alreadyPlayed,
           };

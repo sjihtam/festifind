@@ -216,7 +216,7 @@ from, and when it was `checked`:
 |---|---|---|
 | Dekmantel | 29 Jul – 2 Aug | verified, 120 acts |
 | Solar Weekend | 30 Jul – 2 Aug | verified, 49 |
-| Lowlands | 21 – 23 Aug | partial, 55 (first wave) |
+| Lowlands | 21 – 23 Aug | partial, 56 (first wave) |
 | Into The Great Wide Open | 27 – 30 Aug | partial, 33 |
 | Decibel Outdoor | 28 – 30 Aug | verified, 79 |
 | Amsterdam Dance Event | 21 – 25 Oct | not announced as one list |
