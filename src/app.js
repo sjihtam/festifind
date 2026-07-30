@@ -20,7 +20,6 @@ const state = {
   festival: { picks: [], ranked: [], unmatched: [] },
   discover: { picks: [], ranked: [] },
   when: 'upcoming',
-  preset: 'balanced',
   customLineups: loadCustomLineups(),
   cardArt: loadCardArt(),
 };
@@ -75,19 +74,19 @@ async function hydrateMissingArtwork() {
 }
 
 /**
- * Presets are the primary control. Two abstract axes are a lot to ask of someone
- * who just wants a playlist, so the sliders are demoted to "Fine-tune" and these
- * carry the common intents.
+ * One way to build a playlist — no presets, no sliders. The settings are fixed
+ * at the values that maximise how likeable each song is:
+ *
+ * - discovery 0.25: anchored on artists you demonstrably play, because a proven
+ *   favourite is the most likeable song there is. Unknown artists still get in,
+ *   but only through the match-gated novelty bonus — i.e. only when they truly
+ *   fit your taste.
+ * - mainstream 0.5: dead centre, which makes the engine target YOUR OWN
+ *   popularity band rather than pushing you toward hits or obscurity.
+ * - 40 tracks at most — but quality decides the real length. The track selector
+ *   drops artists below a fit floor rather than padding the list with filler.
  */
-const PRESETS = [
-  { id: 'discover', label: 'Discover',  hint: 'Mostly artists new to you', discovery: 0.9,  mainstream: 0.35 },
-  // Balanced is the default, and matches the slider values in index.html so the
-  // highlighted preset always agrees with the controls underneath it.
-  { id: 'balanced', label: 'Balanced',  hint: 'Favourites and new names',  discovery: 0.62, mainstream: 0.48 },
-  { id: 'familiar', label: 'Familiar',  hint: 'Artists you already play',  discovery: 0.12, mainstream: 0.6 },
-  { id: 'deep',     label: 'Deep cuts', hint: 'Album tracks, not singles',  discovery: 0.75, mainstream: 0.08 },
-  { id: 'hits',     label: 'The hits',  hint: 'What the crowd will sing',   discovery: 0.45, mainstream: 0.95 },
-];
+const TUNING = { discovery: 0.25, mainstream: 0.5, targetTracks: 40 };
 
 /** Colour identity per festival, derived from its genres. */
 const PALETTES = [
@@ -174,12 +173,6 @@ function lineupStatusTag(f) {
     default: return '';
   }
 }
-
-const sliders = () => ({
-  discovery: Number($('#discovery').value) / 100,
-  mainstream: Number($('#mainstream').value) / 100,
-  targetTracks: Number($('#length').value),
-});
 
 // ── auth / shell ───────────────────────────────────────────────────────────
 
@@ -503,71 +496,8 @@ function renderActionBar() {
   const bar = $('#actionbar');
   if (!state.selected || !isLoggedIn()) { bar.hidden = true; return; }
   bar.hidden = false;
-  const preset = PRESETS.find((p) => p.id === state.preset);
   $('#actionbar-title').textContent = state.selected.name;
-  $('#actionbar-meta').textContent =
-    `${$('#length').value} tracks · ${preset ? preset.label : 'Custom'}`;
-}
-
-// ── presets + sliders ──────────────────────────────────────────────────────
-
-function renderPresets() {
-  const wrap = $('#presets');
-  wrap.innerHTML = '';
-  for (const preset of PRESETS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `preset${state.preset === preset.id ? ' active' : ''}`;
-    btn.innerHTML = `<div class="preset-label"></div><div class="preset-hint"></div>`;
-    btn.querySelector('.preset-label').textContent = preset.label;
-    btn.querySelector('.preset-hint').textContent = preset.hint;
-    btn.onclick = () => {
-      state.preset = preset.id;
-      $('#discovery').value = Math.round(preset.discovery * 100);
-      $('#mainstream').value = Math.round(preset.mainstream * 100);
-      renderPresets();
-      syncControls();
-      renderActionBar();
-    };
-    wrap.appendChild(btn);
-  }
-}
-
-function describeDiscovery(v) {
-  if (v < 20) return 'Mostly artists you already play. Few surprises.';
-  if (v < 45) return 'Anchored on artists you know, with some new names.';
-  if (v < 70) return 'A real balance of favourites and new artists.';
-  if (v < 88) return 'Leans into artists you have never played — but only ones that fit.';
-  return 'Almost entirely new to you. Discovery first.';
-}
-
-function describeMainstream(v) {
-  if (v < 20) return 'Album tracks and back catalogue, past the singles.';
-  if (v < 45) return 'Favours lesser-known tracks over obvious ones.';
-  if (v < 70) return 'A mix of well-known tracks and album cuts.';
-  if (v < 88) return 'Mostly singles and the recognisable songs.';
-  return 'Biggest tracks only.';
-}
-
-function syncControls() {
-  const d = Number($('#discovery').value);
-  const m = Number($('#mainstream').value);
-  const l = Number($('#length').value);
-  $('#discovery-value').textContent = describeDiscovery(d);
-  $('#mainstream-value').textContent = describeMainstream(m);
-  $('#length-value').textContent = `${l} tracks · about ${Math.round((l * 3.6) / 60 * 10) / 10} hours`;
-}
-
-/** Manual slider use means the preset no longer describes the settings. */
-function markCustom() {
-  const match = PRESETS.find(
-    (p) =>
-      Math.abs(p.discovery * 100 - Number($('#discovery').value)) < 1 &&
-      Math.abs(p.mainstream * 100 - Number($('#mainstream').value)) < 1
-  );
-  state.preset = match ? match.id : null;
-  renderPresets();
-  renderActionBar();
+  $('#actionbar-meta').textContent = 'Matched to your taste';
 }
 
 // ── shared result components ───────────────────────────────────────────────
@@ -717,7 +647,7 @@ function renderFestivalResults() {
 
   if (!picks.length) {
     el.innerHTML = `<p class="empty">Nothing matched well enough to build a playlist.
-      Try the Discover preset, or paste a fuller lineup.</p>`;
+      Try a festival closer to your taste, or paste a fuller lineup.</p>`;
     return;
   }
 
@@ -800,7 +730,7 @@ async function generate() {
   skeleton($('#results'));
   $('#section-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  const { discovery, mainstream, targetTracks } = sliders();
+  const { discovery, mainstream, targetTracks } = TUNING;
 
   try {
     await ensureTaste(progress);
@@ -895,7 +825,7 @@ async function runDiscovery() {
   button.disabled = true;
   skeleton($('#discover-results'));
 
-  const { mainstream, targetTracks } = sliders();
+  const { mainstream, targetTracks } = TUNING;
 
   try {
     await ensureTaste(discoverProgress);
@@ -990,8 +920,6 @@ async function init() {
 
   renderHeroArt();
   renderFestivals();
-  renderPresets();
-  syncControls();
 
   for (const btn of document.querySelectorAll('#when-filter .seg-btn')) {
     btn.onclick = () => {
@@ -1002,25 +930,8 @@ async function init() {
     };
   }
 
-  for (const id of ['#discovery', '#mainstream']) {
-    $(id).addEventListener('input', () => { syncControls(); markCustom(); });
-  }
-  $('#length').addEventListener('input', () => { syncControls(); renderActionBar(); });
-
   $('#generate').onclick = generate;
   $('#discover').onclick = runDiscovery;
-
-  // The tuning controls stay out of the way until someone actually wants them.
-  $('#customise').onclick = () => {
-    const tune = $('#section-tune');
-    tune.hidden = !tune.hidden;
-    $('#customise').textContent = tune.hidden ? 'Customise' : 'Hide options';
-    if (!tune.hidden) tune.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  $('#close-tune').onclick = () => {
-    $('#section-tune').hidden = true;
-    $('#customise').textContent = 'Customise';
-  };
 
   $('#lineup-dialog').addEventListener('close', (e) => {
     if (e.target.returnValue !== 'save' || !dialogTarget) return;

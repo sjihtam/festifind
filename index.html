@@ -61,40 +61,6 @@
     <details class="note" id="photo-credits" hidden></details>
   </section>
 
-  <!-- Hidden until asked for. The defaults are good; most people never open this. -->
-  <section class="section" id="section-tune" hidden>
-    <div class="section-head">
-      <div>
-        <h2>What kind of playlist?</h2>
-        <p class="section-sub">Pick a starting point, or fine-tune it below.</p>
-      </div>
-      <button class="btn ghost sm" id="close-tune" type="button">Done</button>
-    </div>
-
-    <div class="presets" id="presets" role="group" aria-label="Playlist style"></div>
-
-    <details class="advanced" id="advanced">
-      <summary>Fine-tune</summary>
-      <div class="controls">
-        <div class="control">
-          <label for="discovery">Familiar <span>↔</span> Discovery</label>
-          <input type="range" id="discovery" min="0" max="100" value="62" />
-          <p class="control-value" id="discovery-value"></p>
-        </div>
-        <div class="control">
-          <label for="mainstream">Deep cuts <span>↔</span> The hits</label>
-          <input type="range" id="mainstream" min="0" max="100" value="48" />
-          <p class="control-value" id="mainstream-value"></p>
-        </div>
-        <div class="control">
-          <label for="length">Length</label>
-          <input type="range" id="length" min="15" max="80" step="5" value="40" />
-          <p class="control-value" id="length-value"></p>
-        </div>
-      </div>
-    </details>
-  </section>
-
   <section class="section" id="section-results" hidden>
     <div id="results"></div>
   </section>
@@ -123,7 +89,6 @@
       <span class="actionbar-meta" id="actionbar-meta"></span>
     </div>
     <div class="progress inline" id="progress" hidden></div>
-    <button class="btn ghost sm" id="customise" type="button">Customise</button>
     <button class="btn primary" id="generate" type="button">Build playlist</button>
   </div>
 </div>

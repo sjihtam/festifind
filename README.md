@@ -185,13 +185,16 @@ Both get scored by the same engine, then anything already in your library is
 filtered out. Collaborator finds are score-boosted — and, as above, that boost is
 multiplied by fit so it amplifies a good match rather than manufacturing one.
 
-### The two sliders
+### No knobs
 
-- **Familiar ↔ Discovery** — how much weight goes to artists you already play
-  versus new ones that match your profile.
-- **Deep cuts ↔ The hits** — shifts the target popularity for both artist and
-  track selection. In deep-cut mode it pulls album tracks, not just the top 10,
-  so it can actually reach the back catalogue.
+There is exactly one way to build a playlist: the button. The engine still has
+familiar↔discovery and deep-cuts↔hits as internal parameters (the tests
+exercise both), but the app pins them at the values that maximise how likeable
+each song is — anchored on artists you demonstrably play, targeting your own
+popularity band, with unknown artists admitted only through the match-gated
+novelty bonus. Playlist length is a ceiling, not a quota: track selection
+applies a fit floor and would rather come back short than pad the list with
+filler from the bottom of the bill.
 
 ---
 
@@ -271,7 +274,7 @@ Open the app, then in the DevTools console:
 const { runTests } = await import('/src/engine.test.js'); runTests();
 ```
 
-22 tests covering genre matching, cross-genre token credit, both sliders, the
+22 tests covering genre matching, cross-genre token credit, both scoring axes, the
 genre-prior fallback, the provenance boost, IDF weighting, co-occurrence
 smoothing, fuzzy name matching, recency decay and title normalisation — plus
 the guard that max discovery still rejects a poor fit, and the guard that

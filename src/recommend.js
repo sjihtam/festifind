@@ -431,8 +431,16 @@ export async function selectTracks(
   taste,
   { targetTracks, discovery, mainstream, onProgress = () => {} }
 ) {
-  // Take a wider slice of the lineup than we need, then let track scoring decide.
-  const shortlist = ranked.slice(0, Math.min(ranked.length, Math.ceil(targetTracks * 1.1)));
+  // Quality floor: `targetTracks` is a ceiling, not a quota. An artist below
+  // the floor doesn't belong in the playlist even if there's room — a shorter
+  // playlist of likeable songs beats a full one padded with filler. The bar is
+  // relative to the best score, so a strong lineup raises it, with an absolute
+  // minimum so a uniformly weak lineup can't drag it to zero.
+  const floor = Math.max(0.3, 0.25 * (ranked[0]?.score || 0));
+  const worthy = ranked.filter((entry) => entry.score >= floor);
+
+  // Take a wider slice than we need, then let track scoring decide.
+  const shortlist = worthy.slice(0, Math.min(worthy.length, Math.ceil(targetTracks * 1.1)));
   const alloc = allocate(shortlist, targetTracks);
   const targetTrackPop = Math.min(100, Math.max(0, taste.popularity.mean + (mainstream - 0.5) * 44));
   const wantsDeepCuts = mainstream < 0.45;
