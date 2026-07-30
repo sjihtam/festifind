@@ -52,15 +52,25 @@ if (RECORDING) {
 
 async function saveSnapshot(extra) {
   if (!RECORDING || !recordedCalls.length) return;
+  const body = JSON.stringify({ takenAt: new Date().toISOString(), ...extra, calls: recordedCalls });
+
   try {
-    const res = await fetch('snapshot', {
-      method: 'POST',
-      body: JSON.stringify({ takenAt: new Date().toISOString(), ...extra, calls: recordedCalls }),
-    });
-    if (res.ok) toast('Snapshot saved to data-snapshot.json — ready for offline tuning.');
+    const res = await fetch('snapshot', { method: 'POST', body });
+    if (res.ok) return toast('Snapshot saved to data-snapshot.json — ready for offline tuning.');
   } catch {
-    /* recording is best-effort */
+    /* no local server on this host — fall through to the download */
   }
+
+  // Any other host (GitHub Pages, a different port) has no /snapshot endpoint,
+  // so hand the file to the browser instead. Dropping it in the project root
+  // makes tools/replay.mjs work exactly the same.
+  const url = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'data-snapshot.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Snapshot downloaded — move data-snapshot.json into the project folder.');
 }
 
 function loadCardArt() {
