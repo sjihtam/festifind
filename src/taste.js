@@ -20,6 +20,18 @@
 
 import { api } from './spotify.js';
 
+/**
+ * Stamped into the description of every playlist this app creates, and used to
+ * recognise them again when reading the library back.
+ *
+ * Saving a generated playlist puts its tracks into the user's own playlists,
+ * where the profile would read them as deliberate curation — so the engine's
+ * output becomes its own input, and every artist it picked ranks higher next
+ * run for no reason but having been picked. That feedback loop compounds with
+ * each save, narrowing the profile toward whatever it already chose.
+ */
+export const MADE_BY = 'Made with Festifind.';
+
 // Words that appear in so many genre strings they carry no signal.
 const STOP_TOKENS = new Set(['music', 'and', 'the', 'of', 'pop', 'contemporary', 'modern']);
 
@@ -159,7 +171,13 @@ export async function buildTasteProfile(onProgress = () => {}) {
   // Playlists the user actually curates, not ones they merely follow. Adding a
   // track to your own playlist is as deliberate as saving it — for many people
   // it has entirely replaced saving.
-  const ownPlaylists = playlists.filter((p) => p?.owner?.id === me.id && p.tracks?.total > 0);
+  //
+  // Playlists this app generated are excluded: they record what the engine
+  // chose, not what the user likes, and reading them back would let the engine
+  // confirm its own past picks. See MADE_BY.
+  const ownPlaylists = playlists.filter(
+    (p) => p?.owner?.id === me.id && p.tracks?.total > 0 && !(p.description || '').includes(MADE_BY)
+  );
   let playlistItems = [];
   if (ownPlaylists.length) {
     onProgress('Reading the playlists you curate…');

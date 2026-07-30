@@ -5,7 +5,7 @@ import {
   getRedirectUri, isLoggedIn, logout, isConfigured,
 } from './auth.js';
 import { api } from './spotify.js';
-import { buildTasteProfile } from './taste.js';
+import { buildTasteProfile, MADE_BY } from './taste.js';
 import { resolveLineup, enrichGenres, scoreArtists, selectTracks } from './recommend.js';
 import { discoverArtists } from './discover.js';
 
@@ -762,7 +762,7 @@ function renderFestivalResults() {
     picks,
     description:
       `${selected.name} lineup matched to my listening. ${picks.length} tracks, ` +
-      `${newToYou} from artists new to me. Made with Festifind.`,
+      `${newToYou} from artists new to me. ${MADE_BY}`,
   }));
 }
 
@@ -874,7 +874,7 @@ function renderDiscoverResults() {
 
   wireSave('#disc-save', '#disc-name', '#disc-save-result', () => ({
     picks,
-    description: `${picks.length} tracks from artists I have never played, matched to my listening history. Made with Festifind.`,
+    description: `${picks.length} tracks from artists I have never played, matched to my listening history. ${MADE_BY}`,
   }));
 }
 

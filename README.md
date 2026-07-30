@@ -138,12 +138,20 @@ never hit zero, because taste accretes rather than resets. Four axes:
 | Axis | What it captures |
 |---|---|
 | **Genre vector** | What you listen to, weighted by rank and by time range (6-month history counts most; 4-week is mood, long-term is identity) |
-| **Token vector** | Genre strings split into words, so `melodic techno` and `melodic house` recognise each other. Spotify's genre taxonomy is so granular that exact-match overlap is nearly always zero — without this, matching barely works |
+| **Token vector** | Genre strings split into words, so `melodic techno` and `melodic house` recognise each other. Spotify's genre taxonomy is so granular that exact-match overlap is nearly always zero — without this, matching barely works. Localized genre names arrive as closed-up compounds (`indiesoul`, `surfrock`, `retrosoul` on a Dutch account), so these are segmented back into parts — a whitespace split alone left them as opaque tokens matching nothing |
 | **Popularity band** | Whether you sit on chart-toppers or deep in the long tail |
 | **Release era** | How old the music you actually play is |
 
 Per-artist signals use diminishing returns, so one album obsession doesn't
 drown out everything else.
+
+**Playlists this app generated are excluded from the profile.** Saving one puts
+its tracks into your own playlists, where they'd read as deliberate curation —
+so the engine's output would become its own input, and every artist it picked
+would rank higher next run purely for having been picked. That loop compounds
+with each save. Generated playlists carry a marker in their description
+(`MADE_BY` in [`src/taste.js`](src/taste.js)) and are filtered out on the way
+back in.
 
 ### Festival matching (`src/recommend.js`)
 
@@ -152,6 +160,14 @@ drown out everything else.
    reported back to you rather than guessed at. Diacritics, word order and
    one-letter poster typos are tolerated (edit-distance match with a high
    threshold); anything looser is not.
+1. **Recover missing genres** — Spotify now returns no genres at all for
+   roughly half of all artists. On a real Lowlands run that was 22 of 54 acts,
+   and because they all fell back to the same festival-wide prior they scored
+   the *identical* percentage — a tie, not a ranking, permanently below the
+   playlist floor. `enrichGenres` pools the genres of everyone credited
+   alongside an act on its own top tracks, weighted by how often each recurs;
+   that recovered usable genres for 13 of those 22. Inherited genres are
+   discounted, but far less than the prior.
 2. **Score** — genre + token similarity against your profile, plus familiarity,
    novelty and popularity fit. Two pool-level signals make this collaborative
    rather than a flat string comparison:
@@ -192,9 +208,12 @@ familiar↔discovery and deep-cuts↔hits as internal parameters (the tests
 exercise both), but the app pins them at the values that maximise how likeable
 each song is — anchored on artists you demonstrably play, targeting your own
 popularity band, with unknown artists admitted only through the match-gated
-novelty bonus. Playlist length is a ceiling, not a quota: track selection
-applies a fit floor and would rather come back short than pad the list with
-filler from the bottom of the bill.
+novelty bonus. Playlist length is a ceiling, not a quota, and the fit floor is
+adaptive: the strong tier is used whenever it can supply enough distinct
+artists, and only relaxes toward a hard minimum when holding the high bar would
+mean playing the same 20 acts twice each. Breadth is itself a quality — a
+second track from an artist is the least valuable slot in the playlist, since
+it repeats a name in place of one you haven't heard.
 
 ---
 
