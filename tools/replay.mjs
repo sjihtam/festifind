@@ -112,6 +112,28 @@ const picks = await selectTracks(ranked, taste, { targetTracks, discovery, mains
 console.log('── Playlist ' + '─'.repeat(65));
 picks.forEach((p, i) => {
   const tag = p.alreadySaved ? ' [saved]' : p.alreadyPlayed ? ' [you play this]' : !p.entry.seen ? ' [new artist]' : '';
-  console.log(`${String(i + 1).padStart(2)}. ${p.track.artists.map((a) => a.name).join(', ')} — ${p.track.name}${tag}`);
+  console.log(
+    `${String(i + 1).padStart(2)}. ${String(p.entry.percent).padStart(3)}%  ` +
+    `${p.track.artists.map((a) => a.name).join(', ')} — ${p.track.name}${tag}`
+  );
 });
-console.log(`\n${picks.length} tracks from ${new Set(picks.map((p) => p.entry.artist.id)).size} artists\n`);
+
+// The blend is the whole point: a playlist that is all favourites has found
+// nothing, and one that is all strangers is a radio station. Report both sides
+// separately so a tuning change shows up as a shift in the mix.
+const discoveries = picks.filter((p) => !p.entry.seen);
+const known = picks.filter((p) => p.entry.isKnown);
+const faint = picks.length - discoveries.length - known.length;
+const avg = (list) => (list.length ? Math.round(list.reduce((s, p) => s + p.entry.percent, 0) / list.length) : 0);
+
+console.log(`\n${picks.length} tracks from ${new Set(picks.map((p) => p.entry.artist.id)).size} artists`);
+console.log(
+  `  discovery : ${String(discoveries.length).padStart(2)} tracks · ` +
+  `${new Set(discoveries.map((p) => p.entry.artist.id)).size} artists new to you · avg ${avg(discoveries)}% match`
+);
+console.log(
+  `  favourites: ${String(known.length).padStart(2)} tracks · ` +
+  `${new Set(known.map((p) => p.entry.artist.id)).size} artists you play · avg ${avg(known)}% match`
+);
+if (faint) console.log(`  faint     : ${faint} tracks from artists barely present in your data`);
+console.log();
