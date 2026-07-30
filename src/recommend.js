@@ -531,6 +531,15 @@ export async function selectTracks(
           const year = Number(track.album?.release_date?.slice(0, 4));
           const eraScore = gaussianFit(year, taste.era.mean, Math.max(taste.era.std * 1.6, 7));
 
+          // Solo work always beats collaborations. A lineup slot belongs to
+          // THIS artist's own sound: a joint track dilutes it with someone
+          // else's, and a track where they're only the featured guest barely
+          // represents them at all. Hard tiers, not a score nudge — a solo
+          // song loses to a collab only when there are no solo songs left.
+          const credits = track.artists || [];
+          const soloTier =
+            credits.length === 1 ? 0 : credits[0]?.id === entry.artist.id ? 1 : 2;
+
           const key = `${track.artists?.[0]?.name} – ${normalizeTitle(track.name)}`.toLowerCase();
           // Saved and played are reported separately so the UI can say which it
           // actually is, rather than calling a much-played track "in your library".
@@ -543,6 +552,7 @@ export async function selectTracks(
 
           return {
             track,
+            soloTier,
             // Signature outweighs band fit here on purpose: ACROSS artists the
             // user's popularity band picks who plays; WITHIN one artist's
             // catalogue, how defining the song is matters more than where it
@@ -552,7 +562,7 @@ export async function selectTracks(
             alreadyPlayed,
           };
         })
-        .sort((a, b) => b.trackScore - a.trackScore)
+        .sort((a, b) => a.soloTier - b.soloTier || b.trackScore - a.trackScore)
         .slice(0, quota);
 
       return scored.map((s) => ({ ...s, entry }));
