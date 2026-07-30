@@ -31,11 +31,55 @@ const TERM_WEIGHT = {
   long_term: 1.0,
 };
 
+// Spotify localises genre names, and several locales — Dutch among them —
+// return them as single closed-up compounds: "indiesoul", "surfrock",
+// "nederpop", "experimentele hiphop". Splitting on whitespace alone leaves
+// those as one opaque token, so "indiesoul" never matches a listener whose
+// profile says "indie" or "soul", and the token vector goes almost inert.
+// Segmenting them back into parts is what keeps cross-genre matching alive.
+const GENRE_WORDS = [
+  'alternative', 'progressive', 'psychedelic', 'experimenteel', 'experimentele',
+  'experimental', 'instrumental', 'contemporary', 'traditional', 'symphonic',
+  'electronic', 'industrial', 'orchestral', 'downtempo', 'dancehall', 'hardcore',
+  'shoegaze', 'baroque', 'ambient', 'acoustic', 'classic', 'melodic', 'minimal',
+  'hardstyle', 'gangster', 'britpop', 'nederpop', 'europop', 'synthwave',
+  'electro', 'hyperpop', 'bedroom', 'chamber', 'garage', 'grunge', 'hiphop',
+  'jungle', 'techno', 'trance', 'trap', 'disco', 'house', 'blues', 'metal',
+  'punk', 'funk', 'jazz', 'soul', 'folk', 'rock', 'rap', 'pop', 'dub', 'edm',
+  'indie', 'dream', 'synth', 'retro', 'surf', 'neder', 'afro', 'latin', 'samba',
+  'bossa', 'salsa', 'cumbia', 'reggae', 'reggaeton', 'ska', 'wave', 'core',
+  'grime', 'drill', 'emo', 'noise', 'drone', 'lounge', 'chill', 'deep', 'hard',
+  'soft', 'raw', 'nu', 'neo', 'post', 'art', 'lo-fi', 'lofi', 'vapor', 'future',
+  'liquid', 'tech', 'acid', 'italo', 'nordic', 'celtic', 'gospel', 'country',
+  'bluegrass', 'americana', 'singer', 'songwriter', 'soundtrack', 'score',
+];
+// Longest first, so "hiphop" wins over "hip" and "nederpop" over "neder".
+const SEGMENT_WORDS = [...GENRE_WORDS].sort((a, b) => b.length - a.length);
+
+/** Greedily split a closed-up compound into known genre words, or return null. */
+function segment(token) {
+  const parts = [];
+  let rest = token;
+  while (rest) {
+    const word = SEGMENT_WORDS.find((w) => rest.startsWith(w));
+    if (!word) return null; // an unknown remainder means this isn't a compound
+    parts.push(word);
+    rest = rest.slice(word.length);
+  }
+  return parts.length > 1 ? parts : null;
+}
+
 function tokenize(genre) {
-  return genre
-    .toLowerCase()
-    .split(/[\s\-/]+/)
-    .filter((t) => t.length > 2 && !STOP_TOKENS.has(t));
+  const out = [];
+  for (const raw of genre.toLowerCase().split(/[\s\-/]+/)) {
+    if (raw.length > 2 && !STOP_TOKENS.has(raw)) out.push(raw);
+    // Keep the compound AND its parts: the whole is the stronger signal, the
+    // parts are what let related genres recognise each other at all.
+    for (const part of segment(raw) || []) {
+      if (part.length > 2 && !STOP_TOKENS.has(part) && part !== raw) out.push(part);
+    }
+  }
+  return out;
 }
 
 /** Rank decay: #1 counts roughly 3x what #50 does, smoothly. */

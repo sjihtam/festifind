@@ -261,6 +261,82 @@ export async function resolveLineup(names, market, onProgress = () => {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Stage 1b: recover missing genres
+// ---------------------------------------------------------------------------
+
+/**
+ * Spotify now omits `genres` for roughly half of all artists — on a real
+ * lineup that left 26 of 54 acts with no genre data at all, every one of them
+ * scored against the same festival prior and therefore tied on the identical
+ * percentage. A tie is not a ranking: those artists were unsortable, so the
+ * playlist could never reach past the handful it could actually score.
+ *
+ * Genres are recovered from the company an artist keeps. Every artist credited
+ * alongside them on their own top tracks is fetched, and the genres of those
+ * collaborators are pooled and weighted by how often they recur. A vocalist on
+ * three of an act's five biggest songs describes that act well; someone on one
+ * track describes them weakly, which the weighting reflects.
+ *
+ * Inherited genres are marked `inferredGenres` rather than written to `genres`,
+ * so scoring can keep discounting them below first-hand data.
+ */
+export async function enrichGenres(artists, market, onProgress = () => {}) {
+  const missing = artists.filter((a) => !(a.genres || []).length);
+  if (!missing.length) return artists;
+
+  let done = 0;
+  const creditsFor = await Promise.all(
+    missing.map(async (artist) => {
+      let tracks = [];
+      try {
+        tracks = await api.artistTopTracks(artist.id, market);
+      } catch {
+        tracks = [];
+      }
+      onProgress(++done, missing.length);
+
+      const weights = new Map();
+      for (const track of tracks.slice(0, 10)) {
+        for (const credit of track.artists || []) {
+          if (credit.id && credit.id !== artist.id) {
+            weights.set(credit.id, (weights.get(credit.id) || 0) + 1);
+          }
+        }
+      }
+      return { artist, weights };
+    })
+  );
+
+  const wanted = [...new Set(creditsFor.flatMap(({ weights }) => [...weights.keys()]))];
+  if (!wanted.length) return artists;
+
+  let collaborators = [];
+  try {
+    collaborators = await api.artists(wanted);
+  } catch {
+    return artists;
+  }
+  const byId = new Map(collaborators.map((a) => [a.id, a]));
+
+  for (const { artist, weights } of creditsFor) {
+    const pooled = new Map();
+    for (const [id, count] of weights) {
+      for (const genre of byId.get(id)?.genres || []) {
+        pooled.set(genre, (pooled.get(genre) || 0) + count);
+      }
+    }
+    if (!pooled.size) continue;
+    // Keep the genres that actually recur, not every tag a one-off guest carries.
+    artist.inferredGenres = [...pooled.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([genre]) => genre);
+  }
+
+  return artists;
+}
+
+// ---------------------------------------------------------------------------
 // Stage 2: score the lineup
 // ---------------------------------------------------------------------------
 
@@ -295,13 +371,22 @@ export function scoreArtists(
   return artists
     .map((artist) => {
       const hasGenres = (artist.genres || []).length > 0;
+      // Genres borrowed from an artist's collaborators (see enrichGenres). Far
+      // weaker than their own tags, but incomparably better than the festival
+      // prior, which is identical for every untagged act and so ranks none of
+      // them against each other.
+      const inferred = !hasGenres && (artist.inferredGenres || []).length
+        ? artist.inferredGenres
+        : null;
 
       // Spotify has quietly stopped returning genres for many smaller artists.
       // Falling back on the festival's own genre profile is a weak signal, but a
       // far better one than scoring them zero and dropping them entirely.
       const { genreVec, tokenVec } = hasGenres
         ? vectorsFor(artist.genres)
-        : priorVectors;
+        : inferred
+          ? vectorsFor(inferred)
+          : priorVectors;
 
       const genreSim = cosine(genreVec, taste.genreWeights);
       const tokenSim = cosine(tokenVec, taste.tokenWeights, idf);
@@ -312,7 +397,10 @@ export function scoreArtists(
       // The related term tops up what string matching missed — damped by
       // (1 - genreSim) so it mostly helps artists the exact match can't see.
       let match = 0.5 * genreSim + 0.5 * tokenSim + 0.22 * related * (1 - genreSim);
-      if (!hasGenres) match *= 0.62; // discount the guess, but don't bury them
+      // Discount anything not straight from the artist's own tags: inherited
+      // genres are real evidence and only lightly discounted; the festival
+      // prior is a guess about a whole bill and is discounted hard.
+      if (!hasGenres) match *= inferred ? 0.85 : 0.62;
 
       const affinityRaw = taste.affinity.get(artist.id) || 0;
       const percent = matchPercent({ match, affinity: affinityRaw, usedPrior: !hasGenres });
@@ -359,7 +447,8 @@ export function scoreArtists(
         seen,
         isKnown,
         popFit,
-        usedPrior: !hasGenres,
+        usedPrior: !hasGenres && !inferred,
+        usedInferred: !!inferred,
         percent,
         why: explain({ percent, familiarity, seen, isKnown, artist, taste }),
       };
@@ -439,10 +528,10 @@ function allocate(ranked, targetTracks) {
     alloc.set(entry.artist.id, 1);
     remaining--;
   }
-  // At most ONE second track, best matches first. Two tracks is emphasis;
-  // three is the same artist crowding out someone else's banger — breadth
-  // beats depth in a lineup sampler, and the playlist may simply come back
-  // shorter than the target instead.
+  // Seconds are handed out only after every eligible artist already has one,
+  // and never more than one extra. A second track is the least valuable slot
+  // in the playlist: it says something you already said, in place of a name
+  // you have not heard yet.
   for (const entry of pool) {
     if (remaining <= 0) break;
     alloc.set(entry.artist.id, 2);
@@ -456,15 +545,22 @@ export async function selectTracks(
   taste,
   { targetTracks, discovery, mainstream, onProgress = () => {} }
 ) {
-  // Quality floor: `targetTracks` is a ceiling, not a quota. An artist below
-  // the floor doesn't belong in the playlist even if there's room — a shorter
-  // playlist of likeable songs beats a full one padded with filler.
+  // Quality floor, on the calibrated likeability percent rather than the
+  // ranking score (familiarity inflates the latter, and a bar set from it
+  // excludes perfectly good unknown fits).
   //
-  // The floor is the calibrated likeability percent, NOT the ranking score,
-  // and deliberately not relative to the best entry: familiarity inflates a
-  // favourite's score, and a bar set from it excluded perfectly good unknown
-  // fits — which then shrank the pool to a handful of artists on repeat.
-  const worthy = ranked.filter((entry) => (entry.percent ?? 100) >= 30);
+  // The bar is adaptive because breadth is itself a quality: filling 40 slots
+  // from 22 artists means everyone appears twice, which reads as repetitive
+  // and crowds out names worth hearing. So the strong tier comes first, and
+  // if it can't supply enough distinct artists the bar relaxes toward a hard
+  // minimum — never below it, since that is where genuine noise starts.
+  const STRONG = 30;
+  const HARD_MIN = 18;
+  const wantArtists = Math.ceil(targetTracks * 0.7);
+
+  const eligible = ranked.filter((entry) => (entry.percent ?? 100) >= HARD_MIN);
+  const strong = eligible.filter((entry) => (entry.percent ?? 100) >= STRONG);
+  const worthy = strong.length >= wantArtists ? strong : eligible.slice(0, Math.max(wantArtists, strong.length));
 
   // Take a wider slice than we need, then let track scoring decide.
   const shortlist = worthy.slice(0, Math.min(worthy.length, Math.ceil(targetTracks * 1.1)));

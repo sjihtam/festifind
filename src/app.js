@@ -6,7 +6,7 @@ import {
 } from './auth.js';
 import { api } from './spotify.js';
 import { buildTasteProfile } from './taste.js';
-import { resolveLineup, scoreArtists, selectTracks } from './recommend.js';
+import { resolveLineup, enrichGenres, scoreArtists, selectTracks } from './recommend.js';
 import { discoverArtists } from './discover.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -799,6 +799,11 @@ async function generate() {
     progress('Loading genres and popularity…');
     const byId = new Map((await api.artists(artists.map((a) => a.id))).map((a) => [a.id, a]));
     const hydrated = artists.map((a) => ({ ...(byId.get(a.id) || a), lineupName: a.lineupName }));
+
+    // Spotify omits genres for about half of all artists; without this they all
+    // score identically off the festival prior and cannot be ranked at all.
+    await enrichGenres(hydrated, state.taste.market,
+      (done, total) => progress(`Working out who the untagged acts sound like… ${done}/${total}`));
 
     progress('Scoring the lineup against your taste…');
     const ranked = scoreArtists(hydrated, state.taste, {

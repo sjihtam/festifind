@@ -12,3 +12,6 @@ node_modules/
 # Recorded Spotify snapshot (?record mode) — the user's personal listening
 # data, used by tools/replay.mjs for offline tuning. Never commit.
 data-snapshot.json
+
+# Generated review page (tools/replay.mjs --html): same personal data, rendered.
+review.html
