@@ -7,3 +7,8 @@ node_modules/
 
 # Local Claude Code settings — machine-specific, not part of the app.
 .claude/settings.local.json
+.claude/launch.json
+
+# Recorded Spotify snapshot (?record mode) — the user's personal listening
+# data, used by tools/replay.mjs for offline tuning. Never commit.
+data-snapshot.json

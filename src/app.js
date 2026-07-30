@@ -24,6 +24,45 @@ const state = {
   cardArt: loadCardArt(),
 };
 
+// ── record mode ────────────────────────────────────────────────────────────
+// Open the app with ?record (BEFORE signing in and building) and every Spotify
+// response is captured, then posted to the local server after a build. The
+// resulting data-snapshot.json lets tools/replay.mjs re-run and re-tune the
+// whole scoring pipeline offline, without touching Spotify again. Local dev
+// only — on a static host the POST just 404s harmlessly. The flag sticks in
+// sessionStorage so it survives the OAuth round trip; ?record=off clears it.
+{
+  const flag = new URLSearchParams(location.search).get('record');
+  if (flag === 'off') sessionStorage.removeItem('festifind.record');
+  else if (flag !== null) sessionStorage.setItem('festifind.record', '1');
+}
+const RECORDING = sessionStorage.getItem('festifind.record') === '1';
+const recordedCalls = [];
+if (RECORDING) {
+  for (const name of Object.keys(api)) {
+    if (name === 'createPlaylist' || name === 'addTracks') continue; // never replay writes
+    const real = api[name];
+    api[name] = async (...args) => {
+      const result = await real(...args);
+      recordedCalls.push({ key: `${name}:${JSON.stringify(args)}`, result });
+      return result;
+    };
+  }
+}
+
+async function saveSnapshot(extra) {
+  if (!RECORDING || !recordedCalls.length) return;
+  try {
+    const res = await fetch('snapshot', {
+      method: 'POST',
+      body: JSON.stringify({ takenAt: new Date().toISOString(), ...extra, calls: recordedCalls }),
+    });
+    if (res.ok) toast('Snapshot saved to data-snapshot.json — ready for offline tuning.');
+  } catch {
+    /* recording is best-effort */
+  }
+}
+
 function loadCardArt() {
   try {
     return JSON.parse(localStorage.getItem(CARD_ART) || '{}');
@@ -764,6 +803,7 @@ async function generate() {
     state.festival = { ranked, picks, unmatched };
     progress(null);
     renderFestivalResults();
+    await saveSnapshot({ festival: state.selected.id });
   } catch (err) {
     progress(null);
     console.error(err);
@@ -850,6 +890,7 @@ async function runDiscovery() {
     state.discover = { ranked, picks };
     discoverProgress(null);
     renderDiscoverResults();
+    await saveSnapshot({ discover: true });
   } catch (err) {
     discoverProgress(null);
     console.error(err);

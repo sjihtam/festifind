@@ -6,7 +6,7 @@
 // Open the app at http://127.0.0.1:8888 or auth will fail.
 
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +39,24 @@ const server = createServer(async (req, res) => {
     pathname = decodeURIComponent(new URL(req.url, `http://${HOST}`).pathname);
   } catch {
     return send(res, 400, 'Bad request', 'text/plain');
+  }
+
+  // Record mode (open the app with ?record): the browser posts every Spotify
+  // API response here so the scoring can be replayed and tuned offline with
+  // tools/replay.mjs — no further Spotify calls needed. Local loopback only,
+  // and the file is gitignored: this is the user's listening data.
+  if (req.method === 'POST' && pathname === '/snapshot') {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    try {
+      JSON.parse(body); // refuse to write garbage
+      await writeFile(join(ROOT, 'data-snapshot.json'), body);
+      console.log(`  Snapshot saved: data-snapshot.json (${(body.length / 1e6).toFixed(1)} MB)`);
+      return send(res, 200, '{"ok":true}', 'application/json');
+    } catch {
+      return send(res, 400, '{"ok":false}', 'application/json');
+    }
   }
 
   // Serve index.html for any directory request, the way GitHub Pages and every

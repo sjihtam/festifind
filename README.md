@@ -283,6 +283,29 @@ size of your most-played artist.
 
 ---
 
+## Tuning the engine on real data
+
+The scoring can be tuned against your actual library without hammering the
+Spotify API on every experiment:
+
+1. Start the local server (`npm start`) and open
+   **http://127.0.0.1:8888/?record** — then sign in and build a playlist as
+   normal. Every Spotify response is captured and written to
+   `data-snapshot.json` (gitignored: it's your listening data, it stays on
+   your machine, and `?record=off` turns capturing off again).
+2. Replay the entire pipeline offline, as often as you like:
+
+```bash
+node tools/replay.mjs lowlands
+```
+
+   Flags override the app's fixed tuning: `--discovery 0.4`,
+   `--mainstream 0.7`, `--tracks 30`, `--top 40`, `--file other-snapshot.json`.
+   It prints your taste summary, the ranked lineup with the same percentages
+   the app shows, and the exact playlist — so you can edit weights in `src/`,
+   re-run, and compare. Replay never calls Spotify and can never write to
+   your account.
+
 ## Layout
 
 ```
