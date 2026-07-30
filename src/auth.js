@@ -49,9 +49,10 @@ const REDIRECT_URI = redirectUriFor(location.origin, location.pathname);
 
 const SCOPES = [
   'user-top-read',            // top artists + tracks, the backbone of the taste profile
-  'user-library-read',        // saved tracks
+  'user-library-read',        // saved tracks + saved albums
   'user-follow-read',         // followed artists (strongest explicit signal)
   'user-read-recently-played',// short-term drift
+  'playlist-read-private',    // the playlists you curate — for many people this IS their library
   'user-read-private',        // country code, for track market filtering
   'playlist-modify-private',
   'playlist-modify-public',

@@ -126,8 +126,14 @@ know" anyway, because the scoring is explicit and tunable rather than a black bo
 
 ### The taste profile (`src/taste.js`)
 
-Built from your top artists and tracks across all three time ranges, artists you
-follow, up to 300 saved tracks, and recent plays. Four axes:
+Built from every listening signal the API still exposes: your top artists and
+tracks across all three time ranges, artists you follow, up to 500 saved
+tracks, your saved albums, recent plays, and the playlists you curate yourself
+(followed playlists are ignored — someone else's taste). Explicit acts weigh
+more than passive ones: following an artist and saving an album count heavily,
+adding a track to your own playlist counts like saving it. Dated signals decay
+with a ~18-month half-life, so the profile tracks who you are now — but they
+never hit zero, because taste accretes rather than resets. Four axes:
 
 | Axis | What it captures |
 |---|---|
@@ -136,16 +142,27 @@ follow, up to 300 saved tracks, and recent plays. Four axes:
 | **Popularity band** | Whether you sit on chart-toppers or deep in the long tail |
 | **Release era** | How old the music you actually play is |
 
-Following an artist counts heavily (it's a deliberate act). Saved tracks use
-diminishing returns, so one album obsession doesn't drown out everything else.
+Per-artist signals use diminishing returns, so one album obsession doesn't
+drown out everything else.
 
 ### Festival matching (`src/recommend.js`)
 
 1. **Resolve** — poster names → Spotify artists, conservatively. A wrong match
    poisons the playlist worse than a missing artist does, so ambiguous names are
-   reported back to you rather than guessed at.
+   reported back to you rather than guessed at. Diacritics, word order and
+   one-letter poster typos are tolerated (edit-distance match with a high
+   threshold); anything looser is not.
 2. **Score** — genre + token similarity against your profile, plus familiarity,
-   novelty and popularity fit.
+   novelty and popularity fit. Two pool-level signals make this collaborative
+   rather than a flat string comparison:
+   - **IDF weighting** — a token the whole lineup carries ("techno" at
+     Dekmantel) separates nobody, so it's discounted; a rare token you share
+     with two artists is real evidence.
+   - **Genre co-occurrence** — genres that keep appearing on the same artists
+     are treated as related, which gives partial credit across pairs that share
+     no words at all ("shoegaze" ~ "dream pop"). This is the collaborative
+     signal Spotify's own recommender leans on, rebuilt from the data that's
+     still available.
 3. **Select** — which track from each artist, then order the playlist.
 
 The important design rule: **novelty is multiplied by fit, never added to it.** An
@@ -254,9 +271,12 @@ Open the app, then in the DevTools console:
 const { runTests } = await import('/src/engine.test.js'); runTests();
 ```
 
-13 tests covering genre matching, cross-genre token credit, both sliders, the
-genre-prior fallback, the provenance boost, and title normalisation — plus the
-guard that max discovery still rejects a poor fit.
+21 tests covering genre matching, cross-genre token credit, both sliders, the
+genre-prior fallback, the provenance boost, IDF weighting, co-occurrence
+smoothing, fuzzy name matching, recency decay and title normalisation — plus
+the guard that max discovery still rejects a poor fit, and the guard that
+"known artist" labels use absolute evidence rather than shifting with the
+size of your most-played artist.
 
 ---
 

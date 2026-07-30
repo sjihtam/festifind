@@ -11,6 +11,12 @@
 //                          almost nothing matches exactly.
 //   3. Popularity band   — whether you sit on chart-toppers or deep in the tail.
 //   4. Release era       — how old the music you actually play is.
+//
+// Sources: top artists + tracks over all three time ranges, follows, saved
+// tracks, saved albums, recent plays, and the playlists the user curates —
+// every listening signal the API still exposes. Explicit acts (following,
+// saving an album, adding to a playlist) outweigh passive ones, and dated
+// signals decay so the profile tracks who you are now, not in 2019.
 
 import { api } from './spotify.js';
 
@@ -63,6 +69,19 @@ function releaseYear(track) {
 }
 
 /**
+ * How much a dated signal still counts. A track saved last month says far more
+ * about who you are now than one saved in 2019 — but old signals never hit
+ * zero, because taste accretes rather than resets. Half-life ~18 months,
+ * floored at 0.45. Undated items get a neutral 0.75.
+ */
+export function recencyWeight(addedAt, now = Date.now()) {
+  const t = addedAt ? Date.parse(addedAt) : NaN;
+  if (!Number.isFinite(t)) return 0.75;
+  const months = Math.max(0, (now - t) / (1000 * 60 * 60 * 24 * 30.4));
+  return 0.45 + 0.55 * Math.exp(-months / 18);
+}
+
+/**
  * @param {(msg: string) => void} onProgress
  */
 export async function buildTasteProfile(onProgress = () => {}) {
@@ -74,7 +93,7 @@ export async function buildTasteProfile(onProgress = () => {}) {
   const [
     shortArtists, mediumArtists, longArtists,
     shortTracks, mediumTracks, longTracks,
-    followed, saved, recent,
+    followed, saved, recent, playlists, savedAlbums,
   ] = await Promise.all([
     api.topArtists('short_term'),
     api.topArtists('medium_term'),
@@ -83,9 +102,31 @@ export async function buildTasteProfile(onProgress = () => {}) {
     api.topTracks('medium_term'),
     api.topTracks('long_term'),
     api.followedArtists(),
-    api.savedTracks(300),
+    // Coverage matters for labelling: an artist saved beyond this cap would be
+    // tagged "new artist", which is worse than a few extra requests.
+    api.savedTracks(750),
     api.recentlyPlayed(50),
+    // Both need scopes older sessions may not have granted yet — degrade to
+    // nothing rather than failing the whole profile.
+    api.myPlaylists(50).catch(() => []),
+    api.savedAlbums(100).catch(() => []),
   ]);
+
+  // Playlists the user actually curates, not ones they merely follow. Adding a
+  // track to your own playlist is as deliberate as saving it — for many people
+  // it has entirely replaced saving.
+  const ownPlaylists = playlists.filter((p) => p?.owner?.id === me.id && p.tracks?.total > 0);
+  let playlistItems = [];
+  if (ownPlaylists.length) {
+    onProgress('Reading the playlists you curate…');
+    playlistItems = (
+      await Promise.all(
+        ownPlaylists.slice(0, 16).map((p) => api.playlistTracks(p.id, 200).catch(() => []))
+      )
+    )
+      .flat()
+      .filter((item) => item?.track?.id && !item.track.is_local);
+  }
 
   onProgress('Modelling your taste…');
 
@@ -119,13 +160,37 @@ export async function buildTasteProfile(onProgress = () => {}) {
   const savedByArtist = new Map();
   for (const item of saved) {
     (item?.track?.artists || []).forEach((artist, i) => {
-      if (artist?.id) addWeight(savedByArtist, artist.id, creditWeight(i));
+      if (artist?.id) addWeight(savedByArtist, artist.id, creditWeight(i) * recencyWeight(item.added_at));
     });
   }
   // Diminishing returns, so one 80-track album obsession doesn't drown out
   // everything else.
   for (const [id, count] of savedByArtist) {
     addWeight(affinity, id, Math.min(Math.sqrt(count) * 0.35, 1.6));
+  }
+
+  // Tracks the user put on their own playlists — curation, the same deliberate
+  // act as saving, and for playlist-first listeners the only record of taste
+  // the library holds. Same diminishing-returns shape as saves.
+  const playlistByArtist = new Map();
+  for (const item of playlistItems) {
+    (item.track.artists || []).forEach((artist, i) => {
+      if (artist?.id) addWeight(playlistByArtist, artist.id, creditWeight(i) * recencyWeight(item.added_at));
+    });
+  }
+  for (const [id, count] of playlistByArtist) {
+    addWeight(affinity, id, Math.min(Math.sqrt(count) * 0.35, 1.7));
+  }
+
+  // Saving a whole album is the strongest per-artist commitment the library
+  // records — stronger than any single track save.
+  for (const item of savedAlbums) {
+    const album = item?.album;
+    if (!album) continue;
+    const rec = recencyWeight(item.added_at);
+    (album.artists || []).forEach((artist, i) => {
+      if (artist?.id) addWeight(affinity, artist.id, (i === 0 ? 0.9 : 0.45) * rec);
+    });
   }
 
   // Top *tracks* previously contributed nothing to affinity — only top *artists*
@@ -155,7 +220,7 @@ export async function buildTasteProfile(onProgress = () => {}) {
   // the artists that carry real weight.
   const heavyweights = [...affinity.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 150)
+    .slice(0, 220)
     .map(([id]) => id);
 
   const missing = heavyweights.filter((id) => !artistObjects.has(id));
@@ -187,12 +252,18 @@ export async function buildTasteProfile(onProgress = () => {}) {
 
   // --- Popularity band + era ----------------------------------------------
   const allTopTracks = [...shortTracks, ...mediumTracks, ...longTracks];
+  const playlistTracks = playlistItems.map((i) => i.track);
   const trackPopularities = allTopTracks
     .concat(saved.map((s) => s.track).filter(Boolean))
+    .concat(playlistTracks)
     .map((t) => t?.popularity)
     .filter((p) => typeof p === 'number');
 
-  const years = allTopTracks.map(releaseYear).filter(Boolean);
+  const years = allTopTracks
+    .concat(playlistTracks)
+    .map(releaseYear)
+    .concat(savedAlbums.map((i) => releaseYear({ album: i?.album })))
+    .filter(Boolean);
 
   const knownArtistIds = new Set(affinity.keys());
 
@@ -204,12 +275,17 @@ export async function buildTasteProfile(onProgress = () => {}) {
   // many IDs (remaster, single, deluxe edition, regional release).
   const trackKey = (t) => `${t.artists?.[0]?.name} – ${normalizeTitle(t.name)}`.toLowerCase();
 
-  const savedTracks = saved.map((s) => s.track).filter(Boolean);
+  // Playlist adds count as "saved": both are the user's own curation, and both
+  // mean a discovery-mode playlist shouldn't waste a slot on that song.
+  const savedTracks = saved.map((s) => s.track).filter(Boolean).concat(playlistTracks);
   const savedTrackIds = new Set(savedTracks.map((t) => t.id));
   const savedTrackNames = new Set(savedTracks.map(trackKey));
 
-  const playedTrackIds = new Set(allTopTracks.map((t) => t.id));
-  const playedTrackNames = new Set(allTopTracks.map(trackKey));
+  // "Played" must include recent plays, not just top tracks — a song you had on
+  // yesterday was reaching the playlist labelled "new".
+  const playedSource = allTopTracks.concat(recent.map((r) => r?.track).filter((t) => t?.id));
+  const playedTrackIds = new Set(playedSource.map((t) => t.id));
+  const playedTrackNames = new Set(playedSource.map(trackKey));
 
   const popularity = stats(trackPopularities);
 
@@ -223,6 +299,9 @@ export async function buildTasteProfile(onProgress = () => {}) {
   });
   for (const item of saved) {
     const track = item?.track;
+    if (track?.artists?.length > 1) collaboratorSeeds.push([track.artists, 0.7]);
+  }
+  for (const track of playlistTracks) {
     if (track?.artists?.length > 1) collaboratorSeeds.push([track.artists, 0.7]);
   }
 
@@ -246,6 +325,9 @@ export async function buildTasteProfile(onProgress = () => {}) {
       topArtists: new Set([...shortArtists, ...mediumArtists, ...longArtists].map((a) => a.id)).size,
       followed: followed.length,
       saved: saved.length,
+      playlists: ownPlaylists.length,
+      playlistTracks: playlistItems.length,
+      albums: savedAlbums.length,
       genres: genreWeights.size,
     },
     topGenres: [...genreWeights.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),

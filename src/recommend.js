@@ -14,16 +14,120 @@ import { tokenize, normalizeTitle } from './taste.js';
 // Similarity helpers
 // ---------------------------------------------------------------------------
 
-function cosine(vecA, vecB) {
-  // vecA is small (one artist), vecB is the normalised user vector, so iterate A.
+/**
+ * Cosine similarity, optionally with a per-dimension weight map (IDF). vecB is
+ * assumed pre-normalised, so when no weights are given only A's norm is needed.
+ * With weights both sides are re-scaled, so the weighted form is a true cosine.
+ */
+function cosine(vecA, vecB, weights = null) {
   let dot = 0;
   let normA = 0;
   for (const [key, value] of vecA) {
-    normA += value * value;
+    const w = weights ? weights.get(key) ?? 1 : 1;
+    const a = value * w;
+    normA += a * a;
     const other = vecB.get(key);
-    if (other) dot += value * other;
+    if (other) dot += a * other * w;
   }
-  return normA ? dot / Math.sqrt(normA) : 0;
+  if (!normA) return 0;
+
+  let normB = 1;
+  if (weights) {
+    let sum = 0;
+    for (const [key, value] of vecB) {
+      const w = weights.get(key) ?? 1;
+      sum += (value * w) ** 2;
+    }
+    normB = Math.sqrt(sum) || 1;
+  }
+  return dot / (Math.sqrt(normA) * normB);
+}
+
+/**
+ * Inverse-document-frequency weights for genre tokens, computed over the pool
+ * being scored. A token half the lineup carries ("techno" at Dekmantel, "rock"
+ * at Pinkpop) separates nobody; a rare token two artists share with your
+ * profile is real evidence. Weights run 0.5 (ubiquitous) to 1.0 (unique) so
+ * commonness discounts a signal but can never erase it. Pools under 8 artists
+ * are too small to estimate frequency from, and get no weighting at all.
+ */
+function idfWeights(artists) {
+  const df = new Map();
+  let n = 0;
+  for (const artist of artists) {
+    const genres = artist.genres || [];
+    if (!genres.length) continue;
+    n++;
+    const seen = new Set();
+    for (const g of genres) for (const t of tokenize(g)) seen.add(t);
+    for (const t of seen) df.set(t, (df.get(t) || 0) + 1);
+  }
+  if (n < 8) return null;
+
+  const weights = new Map();
+  const maxIdf = Math.log(1 + n);
+  for (const [t, d] of df) weights.set(t, 0.5 + 0.5 * (Math.log(1 + n / d) / maxIdf));
+  return weights;
+}
+
+/**
+ * Genre co-occurrence graph over the candidate pool: two genres are related in
+ * proportion to how often the same artists carry both. This is the collaborative
+ * signal Spotify's own recommender leans on, rebuilt from data that's still
+ * available — it links genres that share no words at all ("shoegaze" ~ "dream
+ * pop"), which is exactly where token matching goes blind.
+ */
+function genreGraph(artists) {
+  const counts = new Map();
+  const pairs = new Map();
+  for (const artist of artists) {
+    const genres = [...new Set((artist.genres || []).map((g) => g.toLowerCase()))];
+    for (const g of genres) counts.set(g, (counts.get(g) || 0) + 1);
+    for (let i = 0; i < genres.length; i++) {
+      for (let j = i + 1; j < genres.length; j++) {
+        const key = genres[i] < genres[j] ? `${genres[i]}|${genres[j]}` : `${genres[j]}|${genres[i]}`;
+        pairs.set(key, (pairs.get(key) || 0) + 1);
+      }
+    }
+  }
+
+  const graph = new Map();
+  const link = (a, b, strength) => {
+    if (!graph.has(a)) graph.set(a, new Map());
+    const m = graph.get(a);
+    if ((m.get(b) || 0) < strength) m.set(b, strength);
+  };
+  for (const [key, c] of pairs) {
+    const [a, b] = key.split('|');
+    const strength = c / Math.sqrt(counts.get(a) * counts.get(b));
+    if (strength < 0.2) continue; // incidental pairings are noise
+    link(a, b, strength);
+    link(b, a, strength);
+  }
+  return graph;
+}
+
+/**
+ * What share of an artist's genres your taste can account for — directly, or
+ * one co-occurrence hop away. The smoothing term that lets a candidate score
+ * on genres you've never played but that the pool says belong with yours.
+ */
+function relatedGenreFit(genres, graph, taste) {
+  if (!genres.length || !graph.size) return 0;
+  let sum = 0;
+  for (const genre of genres) {
+    const g = genre.toLowerCase();
+    if (taste.rawGenreWeights.has(g)) {
+      sum += 1;
+      continue;
+    }
+    let best = 0;
+    for (const [other, strength] of graph.get(g) || []) {
+      if (strength > best && taste.rawGenreWeights.has(other)) best = strength;
+    }
+    sum += best;
+  }
+  return sum / genres.length;
 }
 
 function vectorsFor(genres) {
@@ -57,6 +161,38 @@ function foldName(name) {
     .trim();
 }
 
+/**
+ * Edit-distance similarity between two folded names (Damerau-Levenshtein with
+ * adjacent transpositions, normalised to 0..1). Catches the one-letter poster
+ * typo ("Overmno" for "Overmono") that exact and substring matching both miss.
+ * At the 0.84 threshold a 10-letter name is allowed roughly one edit.
+ */
+export function nameSimilarity(a, b) {
+  if (a === b) return 1;
+  if (a.length < 3 || b.length < 3) return 0;
+
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  let prev2 = null;
+  let prev = Array.from({ length: cols }, (_, j) => j);
+  for (let i = 1; i < rows; i++) {
+    const cur = [i];
+    for (let j = 1; j < cols; j++) {
+      const sub = prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1);
+      let best = Math.min(sub, prev[j] + 1, cur[j - 1] + 1);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, prev2[j - 2] + 1);
+      }
+      cur.push(best);
+    }
+    prev2 = prev;
+    prev = cur;
+  }
+  return 1 - prev[cols - 1] / Math.max(a.length, b.length);
+}
+
+const sortedTokens = (s) => s.split(' ').sort().join(' ');
+
 // ---------------------------------------------------------------------------
 // Stage 1: resolve poster names to Spotify artists
 // ---------------------------------------------------------------------------
@@ -88,9 +224,17 @@ export async function resolveLineup(names, market, onProgress = () => {}) {
         const got = foldName(artist.name);
         let nameScore = 0;
         if (got === wanted) nameScore = 1;
+        // Same words, different order: "Vieze Meisje DJ" vs "DJ Vieze Meisje".
+        else if (sortedTokens(got) === sortedTokens(wanted)) nameScore = 0.9;
         else if (got.startsWith(wanted) || wanted.startsWith(got)) nameScore = 0.72;
         else if (got.includes(wanted) || wanted.includes(got)) nameScore = 0.55;
-        else return null;
+        else {
+          // Last resort for poster typos — threshold high enough that two
+          // genuinely different artists essentially never clear it.
+          const sim = nameSimilarity(got, wanted);
+          if (sim < 0.84) return null;
+          nameScore = 0.5;
+        }
 
         // Among equally-named artists, the one with an audience is the festival
         // act; the other is a bedroom project that happens to share a name.
@@ -141,6 +285,13 @@ export function scoreArtists(
 
   const priorVectors = vectorsFor(genrePrior);
 
+  // Pool-level structure, computed once per call: which tokens actually
+  // discriminate within this lineup, and which genres its artists say belong
+  // together. Both are what make the scoring collaborative rather than a flat
+  // string comparison.
+  const idf = idfWeights(artists);
+  const graph = genreGraph(artists);
+
   return artists
     .map((artist) => {
       const hasGenres = (artist.genres || []).length > 0;
@@ -153,16 +304,24 @@ export function scoreArtists(
         : priorVectors;
 
       const genreSim = cosine(genreVec, taste.genreWeights);
-      const tokenSim = cosine(tokenVec, taste.tokenWeights);
+      const tokenSim = cosine(tokenVec, taste.tokenWeights, idf);
+      const related = hasGenres ? relatedGenreFit(artist.genres, graph, taste) : 0;
 
       // Token similarity does the heavy lifting: Spotify's genre strings are so
       // granular that exact overlap is rare even between near-identical artists.
-      let match = 0.5 * genreSim + 0.5 * tokenSim;
+      // The related term tops up what string matching missed — damped by
+      // (1 - genreSim) so it mostly helps artists the exact match can't see.
+      let match = 0.5 * genreSim + 0.5 * tokenSim + 0.22 * related * (1 - genreSim);
       if (!hasGenres) match *= 0.62; // discount the guess, but don't bury them
 
       const affinityRaw = taste.affinity.get(artist.id) || 0;
       const familiarity = Math.min(affinityRaw / maxAffinity, 1);
-      const isKnown = familiarity > 0.02;
+      // Labels use ABSOLUTE evidence, deliberately not `familiarity`. The old
+      // test (affinity above 2% of your #1 artist) meant the labels shifted
+      // with the size of your biggest number: with one dominant favourite,
+      // artists you demonstrably play were being tagged "new artist".
+      const seen = affinityRaw >= 0.05; // appeared anywhere in your data
+      const isKnown = affinityRaw >= 0.3; // enough evidence to say "you listen to this"
 
       // A slightly wide bell on purpose: matching your popularity band too tightly
       // makes the results feel narrow, and the interesting picks often sit just
@@ -173,7 +332,10 @@ export function scoreArtists(
       // artist is only interesting if they already fit — otherwise "discovery"
       // just degrades into noise, which is the usual failure mode here.
       const noveltyBonus = discovery * 0.4 * match * (isKnown ? 0 : 1);
-      const familiarBonus = (1 - discovery) * 0.85 * familiarity;
+      // Sub-linear: affinity has a huge dynamic range (a #1 artist can carry
+      // 10x the weight of one you merely save), and linear familiarity let the
+      // top handful of artists crowd out everyone you know moderately well.
+      const familiarBonus = (1 - discovery) * 0.85 * familiarity ** 0.75;
 
       // Provenance boost, used by open-ended discovery: how the candidate was
       // found is itself evidence (a featured credit on a track you love beats a
@@ -187,18 +349,20 @@ export function scoreArtists(
         artist,
         score,
         match,
+        related,
         familiarity,
+        seen,
         isKnown,
         popFit,
         usedPrior: !hasGenres,
-        why: explain({ match, familiarity, isKnown, popFit, artist, taste }),
+        why: explain({ match, familiarity, seen, isKnown, popFit, artist, taste }),
       };
     })
     .sort((a, b) => b.score - a.score);
 }
 
 /** Short human-readable reason, shown next to each artist in the UI. */
-function explain({ match, familiarity, isKnown, artist, taste }) {
+function explain({ match, familiarity, seen, isKnown, artist, taste }) {
   const shared = (artist.genres || [])
     .filter((g) => taste.rawGenreWeights.has(g.toLowerCase()))
     .sort(
@@ -213,6 +377,9 @@ function explain({ match, familiarity, isKnown, artist, taste }) {
   // "new to you", which isn't: you may well know them from playlists or radio.
   if (isKnown && familiarity > 0.45) return 'One of your most-played artists';
   if (isKnown) return 'You already listen to this artist';
+  // Faint but real: a stray play, a feature credit, one playlist add. Not
+  // enough to claim "you listen to them" — but calling them new would be false.
+  if (seen) return 'Appears in your listening, but only just';
   if (shared.length) return `Outside your top artists · matches your ${shared.join(' + ')}`;
   if (match > 0.25) return 'Outside your top artists · close to your usual sound';
   return 'Wildcard from the lineup';

@@ -5,8 +5,8 @@
 //
 //   const { runTests } = await import('/src/engine.test.js'); runTests();
 
-import { scoreArtists } from './recommend.js';
-import { tokenize, normalizeTitle } from './taste.js';
+import { scoreArtists, nameSimilarity } from './recommend.js';
+import { tokenize, normalizeTitle, recencyWeight } from './taste.js';
 import { redirectUriFor } from './auth.js';
 
 const results = [];
@@ -100,6 +100,31 @@ export function runTests() {
       discovery.map((r) => `${r.artist.id}=${r.score.toFixed(3)}`).join(', '));
   }
 
+  // ── 3b. "Known" is absolute, not relative to your biggest artist ─────────
+  // The old test (affinity above 2% of your #1 artist) mislabelled artists you
+  // demonstrably play as "new artist" whenever one favourite dominated the
+  // profile. Labels must not shift with the size of someone else's number.
+  {
+    const taste = houseListener({ affinity: new Map([['giant', 50], ['modest', 0.5]]) });
+    const ranked = scoreArtists(
+      [
+        artist('giant', 'Dominant Favourite', ['deep house']),
+        artist('modest', 'Occasionally Played', ['deep house']),
+        artist('zero', 'Genuinely New', ['deep house']),
+      ],
+      taste,
+      { discovery: 0.5, mainstream: 0.5 }
+    );
+    const modest = ranked.find((r) => r.artist.id === 'modest');
+    const zero = ranked.find((r) => r.artist.id === 'zero');
+    check('an artist you play stays "known" next to a huge favourite',
+      modest.isKnown && modest.seen,
+      `modest: isKnown=${modest.isKnown} seen=${modest.seen}`);
+    check('an artist with no trace at all is the only "new" one',
+      !zero.isKnown && !zero.seen,
+      `zero: isKnown=${zero.isKnown} seen=${zero.seen}`);
+  }
+
   // ── 4. Novelty must not outrank a bad fit ───────────────────────────────
   // The key guard: at max discovery, an unknown artist who does NOT match should
   // still lose to a known artist who does. Otherwise "discovery" is just noise.
@@ -170,6 +195,66 @@ export function runTests() {
     check('collaborator boost lifts a good fit more than a bad one',
       gainGood > 0 && gainGood > gainBad * 5,
       `goodGain=${gainGood.toFixed(4)} badGain=${gainBad.toFixed(4)}`);
+  }
+
+  // ── 7b. Co-occurrence smoothing reaches genres tokens can't ─────────────
+  // "downtempo" shares no genre and no token with this listener. But when the
+  // pool itself says downtempo belongs with organic house (several artists
+  // carry both), a pure-downtempo act should get partial credit — that's the
+  // collaborative signal replacing the retired related-artists endpoint.
+  {
+    const taste = houseListener();
+    const pool = [
+      artist('bridge1', 'Bridge 1', ['organic house', 'downtempo']),
+      artist('bridge2', 'Bridge 2', ['organic house', 'downtempo']),
+      artist('bridge3', 'Bridge 3', ['organic house', 'downtempo']),
+      artist('target', 'Pure Downtempo', ['downtempo']),
+      artist('control', 'Polka Act', ['polka']),
+    ];
+    const ranked = scoreArtists(pool, taste, { discovery: 0.7, mainstream: 0.5 });
+    const target = ranked.find((r) => r.artist.id === 'target');
+    const control = ranked.find((r) => r.artist.id === 'control');
+    check('co-occurring genre gets credit without any token overlap',
+      target.match > 0.05 && target.match > control.match + 0.05,
+      `downtempo=${target.match.toFixed(3)} polka=${control.match.toFixed(3)}`);
+  }
+
+  // ── 7c. IDF: a token the whole pool shares stops discriminating ──────────
+  // The same artist should match LESS when their one shared token is plastered
+  // across the entire lineup than when it's rare — commonness is not evidence.
+  {
+    const taste = houseListener();
+    const target = () => artist('t', 'Melodic Act', ['melodic dubstep']);
+    const rare = [target(), ...Array.from({ length: 9 }, (_, i) => artist(`f${i}`, `F${i}`, ['polka']))];
+    const common = [target(), ...Array.from({ length: 9 }, (_, i) => artist(`f${i}`, `F${i}`, ['melodic polka']))];
+
+    const inRare = scoreArtists(rare, taste, { discovery: 0.7, mainstream: 0.5 })
+      .find((r) => r.artist.id === 't');
+    const inCommon = scoreArtists(common, taste, { discovery: 0.7, mainstream: 0.5 })
+      .find((r) => r.artist.id === 't');
+    check('a pool-wide token counts for less than a rare one',
+      inRare.match > inCommon.match,
+      `rare=${inRare.match.toFixed(3)} common=${inCommon.match.toFixed(3)}`);
+  }
+
+  // ── 7d. Fuzzy name matching catches typos, not different artists ─────────
+  {
+    check('one-letter poster typo clears the threshold',
+      nameSimilarity('overmono', 'overmno') >= 0.84,
+      nameSimilarity('overmono', 'overmno').toFixed(3));
+    check('genuinely different names stay below it',
+      nameSimilarity('bicep', 'bonobo') < 0.84 && nameSimilarity('deep house act', 'death metal act') < 0.84,
+      `${nameSimilarity('bicep', 'bonobo').toFixed(3)}, ${nameSimilarity('deep house act', 'death metal act').toFixed(3)}`);
+  }
+
+  // ── 7e. Recency decays but never zeroes out ──────────────────────────────
+  {
+    const now = Date.parse('2026-07-01T00:00:00Z');
+    const fresh = recencyWeight('2026-06-01T00:00:00Z', now);
+    const old = recencyWeight('2019-06-01T00:00:00Z', now);
+    check('recent saves outweigh old ones, old ones still count',
+      fresh > old && old >= 0.45 && fresh <= 1,
+      `fresh=${fresh.toFixed(3)} old=${old.toFixed(3)}`);
   }
 
   // ── 8. Title normalisation collapses release variants ───────────────────

@@ -641,11 +641,13 @@ function renderTrackList(container, picks) {
     const title = row.querySelector('.trk-title');
     title.textContent = track.name;
     // Track-level badges state only what was actually measured. "Saved" means it
-    // is in your Liked Songs; "you play this" means it is in your top tracks,
-    // which is a different thing and was previously mislabelled as saved.
+    // is in your Liked Songs or your own playlists; "you play this" means it is
+    // in your top tracks or recent plays. "New artist" is only claimed when the
+    // artist left no trace anywhere in your data — an artist with a faint
+    // signal (entry.seen) gets no badge rather than a false one.
     if (alreadySaved) title.insertAdjacentHTML('beforeend', '<span class="badge known">saved</span>');
     else if (alreadyPlayed) title.insertAdjacentHTML('beforeend', '<span class="badge known">you play this</span>');
-    else if (!entry.isKnown) title.insertAdjacentHTML('beforeend', '<span class="badge">new artist</span>');
+    else if (!entry.seen) title.insertAdjacentHTML('beforeend', '<span class="badge">new artist</span>');
 
     row.querySelector('.trk-sub').textContent = track.artists.map((a) => a.name).join(', ');
     row.querySelector('.trk-why').textContent = entry.why;
@@ -719,7 +721,9 @@ function renderFestivalResults() {
     return;
   }
 
-  const newToYou = picks.filter((p) => !p.entry.isKnown).length;
+  // Count only picks with no trace at all — artist unseen in your data AND the
+  // track neither saved nor played. Anything less strict overclaims "new".
+  const newToYou = picks.filter((p) => !p.entry.seen && !p.alreadySaved && !p.alreadyPlayed).length;
   const artistCount = new Set(picks.map((p) => p.entry.artist.id)).size;
 
   el.innerHTML = `
@@ -732,7 +736,7 @@ function renderFestivalResults() {
           <div class="plhero-stats">${pills([
             [picks.length, 'tracks'],
             [artistCount, 'artists'],
-            [newToYou, 'outside your top artists'],
+            [newToYou, 'new to you'],
             [ranked.length, 'of the lineup matched'],
           ])}</div>
           <div class="save-row">
@@ -749,7 +753,11 @@ function renderFestivalResults() {
 
       <h4 class="sub">The tracks</h4>
       <p class="sub-note">Built from ${taste.counts.topArtists} of your top artists,
-        ${taste.counts.followed} you follow and ${taste.counts.saved} saved songs.</p>
+        ${taste.counts.followed} you follow, ${taste.counts.saved} saved songs${
+          taste.counts.playlistTracks
+            ? `, ${taste.counts.playlistTracks} tracks across ${taste.counts.playlists} of your playlists`
+            : ''
+        }${taste.counts.albums ? ` and ${taste.counts.albums} saved albums` : ''}.</p>
       <div class="tracklist" id="tracklist"></div>
 
       ${unmatched.length ? `<div class="unmatched"><strong>${unmatched.length} lineup ${unmatched.length === 1 ? 'name' : 'names'} could not be matched on Spotify</strong> and ${unmatched.length === 1 ? 'was' : 'were'} skipped rather than guessed at: <span id="unmatched-list"></span></div>` : ''}
@@ -1072,6 +1080,7 @@ function enterDemoMode() {
         artist,
         score: 1.4 - i * 0.03,
         isKnown: i % 3 === 0,
+        seen: i % 3 === 0,
         why: i % 3 === 0
           ? 'You already listen to this artist'
           : 'Outside your top artists · matches your deep house',

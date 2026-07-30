@@ -143,6 +143,19 @@ export const api = {
 
   savedTracks: (limit = 200) => paginate('/me/tracks?limit=50', limit),
 
+  savedAlbums: (limit = 100) => paginate('/me/albums?limit=50', limit),
+
+  myPlaylists: (limit = 50) => paginate('/me/playlists?limit=50', limit),
+
+  playlistTracks: (id, limit = 200) => {
+    // `fields` trims the payload to what the taste profile reads — full playlist
+    // pages are enormous (every track carries available_markets etc.).
+    const fields = encodeURIComponent(
+      'items(added_at,track(id,name,popularity,is_local,artists(id,name),album(release_date))),next'
+    );
+    return paginate(`/playlists/${id}/tracks?limit=100&fields=${fields}`, limit);
+  },
+
   recentlyPlayed: async (limit = 50) => {
     const page = await request(`/me/player/recently-played?limit=${Math.min(limit, 50)}`);
     return page?.items || [];
