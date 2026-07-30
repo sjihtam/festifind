@@ -271,7 +271,7 @@ Open the app, then in the DevTools console:
 const { runTests } = await import('/src/engine.test.js'); runTests();
 ```
 
-21 tests covering genre matching, cross-genre token credit, both sliders, the
+22 tests covering genre matching, cross-genre token credit, both sliders, the
 genre-prior fallback, the provenance boost, IDF weighting, co-occurrence
 smoothing, fuzzy name matching, recency decay and title normalisation — plus
 the guard that max discovery still rejects a poor fit, and the guard that

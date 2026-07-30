@@ -158,6 +158,28 @@ export function runTests() {
       hits.map((r) => `${r.artist.id}=${r.score.toFixed(3)}`).join(', '));
   }
 
+  // ── 5b. Popularity fit cannot score a non-matching artist ───────────────
+  // popFit refines a match, never substitutes for one. A wildcard sitting
+  // exactly in your popularity band must still score ~zero, or it floats past
+  // genuine-but-imperfect matches on famousness alone.
+  {
+    const taste = houseListener();
+    // popularity 45 = this listener's exact artist-popularity mean.
+    const ranked = scoreArtists(
+      [
+        artist('w', 'Perfectly Average Polka', ['polka'], 45),
+        artist('m', 'Nu Disco Outlier', ['nu disco'], 4),
+      ],
+      taste,
+      { discovery: 0.5, mainstream: 0.5 }
+    );
+    const wildcard = ranked.find((r) => r.artist.id === 'w');
+    const matcher = ranked.find((r) => r.artist.id === 'm');
+    check('popularity fit alone earns a wildcard nothing',
+      wildcard.score < 0.05 && matcher.score > wildcard.score,
+      `wildcard=${wildcard.score.toFixed(3)} matcher=${matcher.score.toFixed(3)}`);
+  }
+
   // ── 6. Genre-less artists fall back to the festival prior, discounted ────
   {
     const taste = houseListener();

@@ -343,7 +343,11 @@ export function scoreArtists(
       // novelty is — provenance should amplify a good fit, never manufacture one.
       const boost = boosts?.get(artist.id) ? boosts.get(artist.id) * match : 0;
 
-      const score = match + familiarBonus + noveltyBonus + boost + 0.18 * popFit;
+      // Popularity fit refines a match — it must never substitute for one.
+      // Ungated, this 0.18 was a free floor: a zero-match wildcard sitting at
+      // your usual popularity outranked real-but-imperfect genre matches.
+      const popTerm = 0.18 * popFit * Math.min(1, match / 0.2);
+      const score = match + familiarBonus + noveltyBonus + boost + popTerm;
 
       return {
         artist,
